@@ -105,14 +105,27 @@ div[data-baseweb="select"] *{{color:{D1_BLANC}!important}}
 .stDownloadButton>button{{background:{D1_ROUGE}!important;color:white!important;border:none!important;
     border-radius:7px!important;font-weight:600!important;font-size:.8rem!important;padding:.3rem .85rem!important}}
 .stDownloadButton>button:hover{{background:{D1_ROUGE_CLAIR}!important}}
-.stTabs [data-baseweb="tab-list"]{{gap:4px}}
+.stTabs [data-baseweb="tab-list"]{{
+    gap:6px;border-bottom:2px solid {D1_BORDEAUX_2}!important;padding-bottom:0}}
 .stTabs [data-baseweb="tab"]{{
-    font-size:1rem!important;font-weight:600!important;
-    padding:.5rem 1.1rem!important;border-radius:8px 8px 0 0!important;
-    color:{D1_GRIS}!important}}
+    font-size:.95rem!important;font-weight:600!important;
+    padding:.55rem 1.2rem!important;
+    border-radius:8px 8px 0 0!important;
+    border:1px solid {D1_BORDEAUX_2}!important;
+    border-bottom:none!important;
+    background:{D1_CARTE}!important;
+    color:{D1_GRIS}!important;
+    cursor:pointer;transition:all .15s;
+    margin-bottom:-2px}}
+.stTabs [data-baseweb="tab"]:hover{{
+    background:rgba(192,0,24,.12)!important;
+    color:{D1_BLANC}!important;
+    border-color:{D1_ROUGE}!important}}
 .stTabs [aria-selected="true"]{{
-    color:{D1_BLANC}!important;background:rgba(192,0,24,.15)!important;
-    border-bottom:2px solid {D1_ROUGE}!important}}
+    color:{D1_BLANC}!important;
+    background:{D1_BORDEAUX}!important;
+    border-color:{D1_ROUGE}!important;
+    border-bottom:2px solid {D1_BORDEAUX}!important}}
 </style>
 """
 
@@ -343,14 +356,12 @@ def reconstruire_score(df_match, dom, ext):
 # SIDEBAR — navigation par catégories
 # ============================================================================
 NAV = {
-    "VUE D'ENSEMBLE": [("🏠", "Accueil"), ("🏆", "Classement")],
-    "ÉQUIPES":        [("🛡", "Fiche équipe"), ("⚔", "Confrontations")],
-    "JOUEURS":        [("👟", "Buteurs")],
-    "MATCHS":         [("⚽", "Fiche match")],
-    "ANALYSE":        [("⏱", "Profil temporel"), ("📊", "Dynamique de score"),
-                       ("📈", "Analyse avancée")],
-    "RAPPORT":        [("📋", "Rapport équipe")],
-    "AIDE":           [("📖", "Lexique")],
+    "CHAMPIONNAT": [("🏠", "Accueil"), ("🏆", "Classement"),
+                    ("⚽", "Fiche match"), ("📈", "Analyse")],
+    "ÉQUIPES":     [("🛡", "Fiche équipe"), ("⚔", "Confrontations"),
+                    ("📋", "Rapport équipe")],
+    "JOUEURS":     [("👟", "Buteurs")],
+    "MÉTHODO":     [("📖", "Méthodo & Couverture")],
 }
 
 if "page" not in st.session_state:
@@ -1314,120 +1325,325 @@ elif page == "Buteurs":
 # ============================================================================
 # PAGE — PROFIL TEMPOREL
 # ============================================================================
-elif page == "Profil temporel":
-    st.title("Profil temporel des buts")
-    eq=st.selectbox("Périmètre",["Tout le championnat"]+EQUIPES)
-    d=df if eq=="Tout le championnat" else df[df["equipe_marque"]==eq]
-    p1=int((d["periode"]==1).sum()); p2=int((d["periode"]==2).sum())
-    c1,c2,c3=st.columns(3)
-    c1.metric("Buts",len(d))
-    c2.metric("1re période",p1,f"{p1/len(d)*100:.0f}%" if len(d) else "")
-    c3.metric("2e période",p2,f"{p2/len(d)*100:.0f}%" if len(d) else "")
+elif page == "Analyse":
+    st.title("Analyse du championnat")
 
-    st.markdown("### Buts par minute")
-    mins=d["minute"].dropna().astype(int)
-    serie=mins.value_counts().reindex(range(1,41),fill_value=0).sort_index()
-    coul_b=[D1_ROUGE if m<=20 else D1_BORDEAUX_2 for m in serie.index]
-    fig=go.Figure(go.Bar(x=[f"{m}'" for m in serie.index],y=serie.values,
-                         marker_color=coul_b,textangle=0))
-    # Mi-temps : ligne verticale entre 20' et 21' (index 19 et 20)
-    fig.add_shape(type="line",x0="20'",x1="20'",y0=0,y1=1,yref="paper",
-                  line=dict(color=D1_GRIS,width=1,dash="dot"))
-    fig.add_annotation(x="20'",y=1,yref="paper",text="Mi-temps",
-                       showarrow=False,font=dict(color=D1_GRIS,size=10),
-                       yanchor="bottom",xanchor="right")
-    st.plotly_chart(style_fig(fig,300),use_container_width=True)
-    st.markdown("<p class='note'>Rouge = 1re période · Bordeaux = 2e période</p>",unsafe_allow_html=True)
+    tab_pt, tab_ds, tab_av = st.tabs([
+        "⏱  Profil temporel",
+        "📊  Dynamique de score",
+        "🔬  Analyses avancées",
+    ])
 
-    st.markdown("### Buts par tranche de 5 minutes")
-    tr=pd.cut(mins,bins=range(0,41,5),labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
-    coul_q=[D1_ROUGE if i<4 else D1_BORDEAUX_2 for i in range(8)]
-    fig2=go.Figure(go.Bar(x=tr.index.astype(str),y=tr.values,
-                          marker_color=coul_q,text=tr.values,textposition="outside",textangle=0))
-    fig2.update_yaxes(showticklabels=False)
-    st.plotly_chart(style_fig(fig2,260),use_container_width=True)
-
-# ============================================================================
-# PAGE — DYNAMIQUE DE SCORE
-# ============================================================================
-elif page == "Dynamique de score":
-    st.title("Dynamique de score")
-    st.markdown("<p class='note'>Situation de l'équipe qui marque, juste avant son but.</p>",unsafe_allow_html=True)
-    eq=st.selectbox("Périmètre",["Tout le championnat"]+EQUIPES)
-    d=df if eq=="Tout le championnat" else df[df["equipe_marque"]==eq]
-    d=d[d["situation"].notna()]
-    ordre=["Mené","Égalité","Menant"]
-    coul_sit={"Mené":D1_ROUGE,"Égalité":D1_OR,"Menant":D1_VERT}
-    sit=d["situation"].value_counts().reindex(ordre,fill_value=0)
-    tot=sit.sum() or 1
-    c1,c2,c3=st.columns(3)
-    c1.metric("Est mené",int(sit["Mené"]),f"{sit['Mené']/tot*100:.0f}%")
-    c2.metric("À égalité",int(sit["Égalité"]),f"{sit['Égalité']/tot*100:.0f}%")
-    c3.metric("En menant",int(sit["Menant"]),f"{sit['Menant']/tot*100:.0f}%")
-    fig=go.Figure(go.Bar(x=ordre,y=sit.values,
-                         marker_color=[coul_sit[s] for s in ordre],
-                         text=[f"{v}  ({v/tot*100:.0f}%)" for v in sit.values],
-                         textposition="outside",textangle=0,width=[0.4,0.4,0.4]))
-    fig.update_yaxes(showticklabels=False)
-    st.plotly_chart(style_fig(fig,260),use_container_width=True)
-    if eq=="Tout le championnat":
-        st.markdown("### Comparaison par équipe — buts selon situation de score")
-        rows=[]
-        for e in EQUIPES:
-            de=df[(df["equipe_marque"]==e)&(df["situation"].notna())]
-            if len(de):
-                rows.append({"Équipe":e,
-                    "pct_mené":(de["situation"]=="Mené").mean()*100,
-                    "pct_egal":(de["situation"]=="Égalité").mean()*100,
-                    "pct_men": (de["situation"]=="Menant").mean()*100})
-        comp=pd.DataFrame(rows)
+    # ================================================================
+    # ONGLET 1 — PROFIL TEMPOREL
+    # ================================================================
+    with tab_pt:
+        eq=st.selectbox("Périmètre",["Tout le championnat"]+EQUIPES, key="pt_eq")
+        d=df if eq=="Tout le championnat" else df[df["equipe_marque"]==eq]
+        p1=int((d["periode"]==1).sum()); p2=int((d["periode"]==2).sum())
         c1,c2,c3=st.columns(3)
-        with c1:
-            st.markdown("#### Est mené")
-            s=comp.sort_values("pct_mené",ascending=False)
-            fig_m=go.Figure(go.Bar(x=s["pct_mené"].round(0),y=s["Équipe"],orientation="h",
-                                   marker_color=D1_ROUGE,text=[f"{v:.0f}%" for v in s["pct_mené"]],
-                                   textposition="outside",textangle=0,
-                                   textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
-            fig_m.update_yaxes(autorange="reversed")
-            st.plotly_chart(style_fig(fig_m,max(280,28*len(s))),use_container_width=True)
-        with c2:
-            st.markdown("#### À égalité")
-            s=comp.sort_values("pct_egal",ascending=False)
-            fig_e=go.Figure(go.Bar(x=s["pct_egal"].round(0),y=s["Équipe"],orientation="h",
-                                   marker_color=D1_OR,text=[f"{v:.0f}%" for v in s["pct_egal"]],
-                                   textposition="outside",textangle=0,
-                                   textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
-            fig_e.update_yaxes(autorange="reversed")
-            st.plotly_chart(style_fig(fig_e,max(280,28*len(s))),use_container_width=True)
-        with c3:
-            st.markdown("#### En menant")
-            s=comp.sort_values("pct_men",ascending=False)
-            fig_v=go.Figure(go.Bar(x=s["pct_men"].round(0),y=s["Équipe"],orientation="h",
-                                   marker_color=D1_VERT,text=[f"{v:.0f}%" for v in s["pct_men"]],
-                                   textposition="outside",textangle=0,
-                                   textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
-            fig_v.update_yaxes(autorange="reversed")
-            st.plotly_chart(style_fig(fig_v,max(280,28*len(s))),use_container_width=True)
+        c1.metric("Buts",len(d))
+        c2.metric("1re période",p1,f"{p1/len(d)*100:.0f}%" if len(d) else "")
+        c3.metric("2e période",p2,f"{p2/len(d)*100:.0f}%" if len(d) else "")
 
-# ============================================================================
-# PAGE — VUE ÉQUIPE
-# ============================================================================
-# PAGE Vue équipe → fusionnée dans Fiche équipe
-# PAGE Tactique/Origines → fusionnée dans Fiche équipe
+        st.markdown("### Buts par minute")
+        mins=d["minute"].dropna().astype(int)
+        serie=mins.value_counts().reindex(range(1,41),fill_value=0).sort_index()
+        coul_b=[D1_ROUGE if m<=20 else D1_BORDEAUX_2 for m in serie.index]
+        fig=go.Figure(go.Bar(x=[f"{m}'" for m in serie.index],y=serie.values,
+                             marker_color=coul_b,text=serie.values,
+                             textposition="outside",textangle=0,
+                             textfont=dict(size=12,color=D1_BLANC)))
+        fig.update_yaxes(showticklabels=False)
+        fig.add_shape(type="line",x0="20'",x1="20'",y0=0,y1=1,yref="paper",
+                      line=dict(color=D1_GRIS,width=1,dash="dot"))
+        fig.add_annotation(x="20'",y=1,yref="paper",text="Mi-temps",
+                           showarrow=False,font=dict(color=D1_GRIS,size=10),
+                           yanchor="bottom",xanchor="right")
+        st.plotly_chart(style_fig(fig,300),use_container_width=True)
+        st.markdown("<p class='note'>Rouge = 1re période · Bordeaux = 2e période</p>",unsafe_allow_html=True)
+
+        st.markdown("### Buts par tranche de 5 minutes")
+        tr=pd.cut(mins,bins=range(0,41,5),labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
+        coul_q=[D1_ROUGE if i<4 else D1_BORDEAUX_2 for i in range(8)]
+        fig2=go.Figure(go.Bar(x=tr.index.astype(str),y=tr.values,marker_color=coul_q,
+                              text=tr.values,textposition="outside",textangle=0,
+                              textfont=dict(size=13,color=D1_BLANC)))
+        fig2.update_yaxes(showticklabels=False)
+        st.plotly_chart(style_fig(fig2,270),use_container_width=True)
+
+    # ================================================================
+    # ONGLET 2 — DYNAMIQUE DE SCORE
+    # ================================================================
+    with tab_ds:
+        st.markdown("<p class='note'>Situation de l'équipe qui marque, juste avant son but.</p>",unsafe_allow_html=True)
+        eq=st.selectbox("Périmètre",["Tout le championnat"]+EQUIPES,key="ds_eq")
+        d=df if eq=="Tout le championnat" else df[df["equipe_marque"]==eq]
+        d=d[d["situation"].notna()]
+        ordre=["Est mené","Égalité","Menant"]
+        coul_sit={"Est mené":D1_ROUGE,"Égalité":D1_OR,"Menant":D1_VERT}
+        sit=d["situation"].value_counts().reindex(ordre,fill_value=0)
+        tot=sit.sum() or 1
+        c1,c2,c3=st.columns(3)
+        c1.metric("Est mené",int(sit["Est mené"]),f"{sit['Est mené']/tot*100:.0f}%")
+        c2.metric("À égalité",int(sit["Égalité"]),f"{sit['Égalité']/tot*100:.0f}%")
+        c3.metric("En menant",int(sit["Menant"]),f"{sit['Menant']/tot*100:.0f}%")
+        fig=go.Figure(go.Bar(x=ordre,y=sit.values,
+                             marker_color=[coul_sit[s] for s in ordre],
+                             text=[f"{v}  ({v/tot*100:.0f}%)" for v in sit.values],
+                             textposition="outside",textangle=0,
+                             textfont=dict(size=13,color=D1_BLANC),width=[0.4,0.4,0.4]))
+        fig.update_yaxes(showticklabels=False)
+        st.plotly_chart(style_fig(fig,260),use_container_width=True)
+        if eq=="Tout le championnat":
+            st.markdown("### Comparaison par équipe — buts selon situation de score")
+            rows=[]
+            for e in EQUIPES:
+                de=df[(df["equipe_marque"]==e)&(df["situation"].notna())]
+                if len(de):
+                    rows.append({"Équipe":e,
+                        "pct_mené":(de["situation"]=="Est mené").mean()*100,
+                        "pct_egal":(de["situation"]=="Égalité").mean()*100,
+                        "pct_men": (de["situation"]=="Menant").mean()*100})
+            comp=pd.DataFrame(rows)
+            c1,c2,c3=st.columns(3)
+            with c1:
+                st.markdown("#### Est mené")
+                s=comp.sort_values("pct_mené",ascending=False)
+                fig_m=go.Figure(go.Bar(x=s["pct_mené"].round(0),y=[nc(e) for e in s["Équipe"]],
+                    orientation="h",marker_color=D1_ROUGE,
+                    text=[f"{v:.0f}%" for v in s["pct_mené"]],
+                    textposition="outside",textangle=0,
+                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
+                fig_m.update_yaxes(autorange="reversed")
+                st.plotly_chart(style_fig(fig_m,max(280,28*len(s))),use_container_width=True)
+            with c2:
+                st.markdown("#### À égalité")
+                s=comp.sort_values("pct_egal",ascending=False)
+                fig_e=go.Figure(go.Bar(x=s["pct_egal"].round(0),y=[nc(e) for e in s["Équipe"]],
+                    orientation="h",marker_color=D1_OR,
+                    text=[f"{v:.0f}%" for v in s["pct_egal"]],
+                    textposition="outside",textangle=0,
+                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
+                fig_e.update_yaxes(autorange="reversed")
+                st.plotly_chart(style_fig(fig_e,max(280,28*len(s))),use_container_width=True)
+            with c3:
+                st.markdown("#### En menant")
+                s=comp.sort_values("pct_men",ascending=False)
+                fig_v=go.Figure(go.Bar(x=s["pct_men"].round(0),y=[nc(e) for e in s["Équipe"]],
+                    orientation="h",marker_color=D1_VERT,
+                    text=[f"{v:.0f}%" for v in s["pct_men"]],
+                    textposition="outside",textangle=0,
+                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
+                fig_v.update_yaxes(autorange="reversed")
+                st.plotly_chart(style_fig(fig_v,max(280,28*len(s))),use_container_width=True)
+
+    # ================================================================
+    # ONGLET 3 — ANALYSES AVANCÉES
+    # ================================================================
+    with tab_av:
+        matchs = construire_matchs()
+
+        # -- Régularité offensive --
+        st.markdown("### Régularité offensive")
+        st.markdown("<p class='note'>Moyenne de buts par match et constance d'un match à l'autre (écart-type).</p>",unsafe_allow_html=True)
+        rows_reg=[]
+        for eq in EQUIPES:
+            meq=matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+            bpm=[]
+            for _,m in meq.iterrows():
+                dm=df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
+                bpm.append(int((dm["equipe_marque"]==eq).sum()))
+            if bpm:
+                rows_reg.append({"equipe":eq,"moy":pd.Series(bpm).mean(),"std":pd.Series(bpm).std(ddof=0),"min":min(bpm),"max":max(bpm)})
+        reg=pd.DataFrame(rows_reg).sort_values("moy",ascending=False)
+        cg_r,cd_r=st.columns(2)
+        with cg_r:
+            st.markdown("#### Moyenne de buts/match")
+            fig_moy=go.Figure()
+            for _,r in reg.iterrows():
+                c_eq=COULEUR_EQUIPE.get(r["equipe"],D1_ROUGE)
+                fig_moy.add_trace(go.Bar(x=[round(r["moy"],1)],y=[nc(r["equipe"])],
+                    orientation="h",marker_color=c_eq,text=[f'{r["moy"]:.1f}'],
+                    textposition="outside",textangle=0,showlegend=False,
+                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False,
+                    hovertemplate=f'{r["equipe"]}<br>Moy : {r["moy"]:.1f}<br>Min : {r["min"]} · Max : {r["max"]}<extra></extra>'))
+            fig_moy.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_moy,max(320,30*len(reg))),use_container_width=True)
+        with cd_r:
+            st.markdown("#### Régularité (écart-type)")
+            reg_s=reg.sort_values("std")
+            fig_std=go.Figure()
+            for _,r in reg_s.iterrows():
+                ratio=(r["std"]-reg_s["std"].min())/((reg_s["std"].max()-reg_s["std"].min()) or 1)
+                c_eq=D1_VERT if ratio<0.4 else(D1_OR if ratio<0.7 else D1_ROUGE)
+                fig_std.add_trace(go.Bar(x=[round(r["std"],1)],y=[nc(r["equipe"])],
+                    orientation="h",marker_color=c_eq,text=[f'± {r["std"]:.1f}'],
+                    textposition="outside",textangle=0,showlegend=False,
+                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
+            fig_std.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_std,max(320,30*len(reg_s))),use_container_width=True)
+        st.markdown("<p class='note'>🟢 régulier · 🟡 moyen · 🔴 irrégulier — survole pour mini/maxi</p>",unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # -- Momentum --
+        st.markdown("### Momentum — buts selon le moment de la période")
+        eq_sel=st.selectbox("Équipe (ou tout le championnat)",["Tout le championnat"]+EQUIPES,key="momentum_sel")
+        d_mom=df if eq_sel=="Tout le championnat" else df[df["equipe_marque"]==eq_sel]
+        def tranche_moment(row):
+            m=row["minute"];p=row["periode"]
+            if p==1:
+                if m<=5:  return "Début P1 (1-5')"
+                elif m<=15: return "Milieu P1 (6-15')"
+                else:       return "Fin P1 (16-20')"
+            else:
+                if m<=25: return "Début P2 (21-25')"
+                elif m<=35: return "Milieu P2 (26-35')"
+                else:       return "Fin P2 (36-40')"
+        d_mom2=d_mom.copy(); d_mom2["moment"]=d_mom2.apply(tranche_moment,axis=1)
+        ordre_mom=["Début P1 (1-5')","Milieu P1 (6-15')","Fin P1 (16-20')","Début P2 (21-25')","Milieu P2 (26-35')","Fin P2 (36-40')"]
+        mom_cnt=d_mom2["moment"].value_counts().reindex(ordre_mom,fill_value=0)
+        coul_mom=[D1_ROUGE]*3+[D1_BORDEAUX_2]*3
+        fig_mom=go.Figure(go.Bar(x=ordre_mom,y=mom_cnt.values,marker_color=coul_mom,
+            text=mom_cnt.values,textposition="outside",textangle=0,
+            textfont=dict(size=13,color=D1_BLANC)))
+        fig_mom.update_yaxes(showticklabels=False)
+        best=mom_cnt.idxmax()
+        st.plotly_chart(style_fig(fig_mom,270),use_container_width=True)
+        st.markdown(f"<p class='note'>Moment le plus productif : <b>{best}</b> ({int(mom_cnt.max())} buts)</p>",unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # -- Concentration offensive --
+        st.markdown("### Concentration offensive")
+        rows_conc=[]
+        for eq in EQUIPES:
+            dp=df[df["equipe_marque"]==eq]
+            if len(dp)==0: continue
+            bb=dp["joueur"].value_counts()
+            rows_conc.append({"equipe":eq,"top1_pct":bb.iloc[0]/len(dp)*100,"nb_buteurs":len(bb)})
+        conc=pd.DataFrame(rows_conc)
+        cg_c,cd_c=st.columns(2)
+        with cg_c:
+            st.markdown("#### Part du top buteur")
+            fig_c1=go.Figure()
+            for _,r in conc.sort_values("top1_pct",ascending=False).iterrows():
+                c_eq=COULEUR_EQUIPE.get(r["equipe"],D1_ROUGE)
+                fig_c1.add_trace(go.Bar(x=[r["top1_pct"]],y=[nc(r["equipe"])],orientation="h",
+                    marker_color=c_eq,text=[f'{r["top1_pct"]:.0f}%'],
+                    textposition="outside",textangle=0,showlegend=False,
+                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
+            fig_c1.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_c1,max(280,28*len(conc))),use_container_width=True)
+        with cd_c:
+            st.markdown("#### Nb buteurs différents")
+            fig_c2=go.Figure()
+            for _,r in conc.sort_values("nb_buteurs",ascending=False).iterrows():
+                c_eq=COULEUR_EQUIPE.get(r["equipe"],D1_ROUGE)
+                fig_c2.add_trace(go.Bar(x=[r["nb_buteurs"]],y=[nc(r["equipe"])],orientation="h",
+                    marker_color=c_eq,text=[int(r["nb_buteurs"])],
+                    textposition="outside",textangle=0,showlegend=False,
+                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
+            fig_c2.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_c2,max(280,28*len(conc))),use_container_width=True)
+
+        st.markdown("---")
+
+        # -- Radar comparatif --
+        st.markdown("### Radar comparatif")
+        eq_radar=st.multiselect("Équipes",EQUIPES,default=EQUIPES[:3],max_selections=4)
+        if len(eq_radar)>=2:
+            indicateurs=["Volume offensif","Solidité défensive","Résistance","Régularité","Collectif"]
+            def radar_vals(eq):
+                dp=df[df["equipe_marque"]==eq]; dc=df[df["equipe_encaisse"]==eq]
+                meq_r=matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]; nm=len(meq_r) or 1
+                vol_off=len(dp)/nm; enc_pm=len(dc)/nm
+                rs_r=analyser_retours_score(eq); menes=rs_r["mv"]+rs_r["mn"]+rs_r["md"]
+                resistance=(rs_r["mv"]+rs_r["mn"])/menes*100 if menes>0 else 50
+                bpm_l=[]
+                for _,m in meq_r.iterrows():
+                    dm2=df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
+                    bpm_l.append(int((dm2["equipe_marque"]==eq).sum()))
+                std=pd.Series(bpm_l).std(ddof=0) if len(bpm_l)>1 else 0
+                collectif=float(dp["joueur"].nunique())
+                return [vol_off,enc_pm,resistance,std,collectif]
+            all_vals={eq:radar_vals(eq) for eq in eq_radar}
+            all_matrix=pd.DataFrame(all_vals,index=indicateurs)
+            axes_inv={"Solidité défensive","Régularité"}
+            norm=all_matrix.copy()
+            for idx in indicateurs:
+                mn=all_matrix.loc[idx].min(); mx=all_matrix.loc[idx].max()
+                if mx!=mn:
+                    vn=(all_matrix.loc[idx]-mn)/(mx-mn)*100
+                    norm.loc[idx]=100-vn if idx in axes_inv else vn
+                else:
+                    norm.loc[idx]=50
+            fig_radar=go.Figure()
+            for eq in eq_radar:
+                vals=norm[eq].tolist(); raw=all_matrix[eq].tolist()
+                raw_labels=[f"{raw[0]:.1f} buts/match",f"{raw[1]:.1f} encaissés/match",
+                    f"{raw[2]:.0f}% résultat positif quand mené",f"écart-type {raw[3]:.1f}",f"{int(raw[4])} buteurs"]
+                coul=COULEUR_EQUIPE.get(eq,D1_ROUGE)
+                fig_radar.add_trace(go.Scatterpolar(
+                    r=vals+[vals[0]],theta=indicateurs+[indicateurs[0]],name=nc(eq),
+                    line=dict(color=coul,width=2.5),fill="toself",fillcolor=hex_to_rgba(coul,0.15),
+                    customdata=raw_labels+[raw_labels[0]],
+                    hovertemplate="<b>%{theta}</b><br>%{customdata}<extra></extra>"))
+            fig_radar.update_layout(polar=dict(
+                bgcolor="rgba(0,0,0,0)",
+                radialaxis=dict(visible=True,range=[0,100],gridcolor="rgba(255,255,255,.1)",tickfont=dict(size=9)),
+                angularaxis=dict(gridcolor="rgba(255,255,255,.1)",tickfont=dict(size=13,color=D1_BLANC))))
+            st.plotly_chart(style_fig(fig_radar,460),use_container_width=True)
+            st.markdown(
+                f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};border-radius:10px;padding:.8rem 1rem;font-size:.8rem;color:{D1_GRIS}">'
+                f'<b style="color:{D1_BLANC}">Lecture</b> — tous les axes "plus = mieux", normalisés 0-100. Survole pour les valeurs brutes.<br>'
+                f'<b>Volume offensif</b> = buts/match · <b>Solidité défensive</b> = inverse buts encaissés/match · '
+                f'<b>Résistance</b> = % résultats positifs quand mené &middot; <b>Régularité</b> = inverse de l\'écart-type &middot; <b>Collectif</b> = nb buteurs différents'
+                f'</div>',unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # -- Heatmap minute × équipe --
+        st.markdown("### Heatmap — quand chaque équipe marque (minutes)")
+        eq_hm=st.multiselect("Équipes",EQUIPES,default=[],key="hm_eq")
+        equipes_hm=eq_hm if eq_hm else EQUIPES
+        clt_hm=construire_classement(); ordre_hm=[e for e in clt_hm["equipe"].tolist() if e in equipes_hm]
+        pivot_hm2=(df[df["equipe_marque"].isin(equipes_hm)]
+            .groupby(["equipe_marque","minute"]).size().reset_index(name="buts")
+            .pivot(index="equipe_marque",columns="minute",values="buts")
+            .reindex(ordre_hm).reindex(columns=range(1,41),fill_value=0).fillna(0))
+        fig_hm2=go.Figure(go.Heatmap(
+            z=pivot_hm2.values,x=[f"{m}'" for m in range(1,41)],
+            y=[nc(e) for e in pivot_hm2.index],
+            colorscale=[[0,"rgba(38,24,28,1)"],[0.4,"rgba(140,10,24,0.7)"],[1,D1_ROUGE]],
+            text=[[str(int(v)) if v>0 else "" for v in row] for row in pivot_hm2.values],
+            texttemplate="%{text}",textfont=dict(size=10,color="white"),
+            hovertemplate="<b>%{y}</b> · %{x}<br>%{z} buts<extra></extra>",showscale=True,
+            colorbar=dict(len=0.8,thickness=12,tickfont=dict(size=10))))
+        fig_hm2.add_vline(x="20'",line_dash="dot",line_color=D1_GRIS,line_width=1.5,
+            annotation_text="Mi-temps",annotation_font_color=D1_GRIS,annotation_position="top")
+        fig_hm2.update_xaxes(tickfont=dict(size=10),
+            tickvals=[f"{m}'" for m in [1,5,10,15,20,25,30,35,40]])
+        fig_hm2.update_yaxes(tickfont=dict(size=11))
+        st.plotly_chart(style_fig(fig_hm2,max(300,38*len(ordre_hm))),use_container_width=True)
+
+
 elif page == "Confrontations":
     st.title("Confrontations directes")
     c1,c2=st.columns(2)
     e1=c1.selectbox("Équipe A",EQUIPES,index=0)
     e2=c2.selectbox("Équipe B",EQUIPES,index=1 if len(EQUIPES)>1 else 0)
-    if e1==e2: st.warning("Choisis deux équipes différentes."); st.stop()
+    if e1==e2:
+        st.warning("Choisis deux équipes différentes."); st.stop()
     masque=(((df["equipe_marque"]==e1)&(df["equipe_encaisse"]==e2))|
             ((df["equipe_marque"]==e2)&(df["equipe_encaisse"]==e1)))
     d=df[masque]
-    if d.empty: st.info("Aucun but recensé entre ces deux équipes."); st.stop()
-    matchs=construire_matchs()
-    mh2h=matchs[((matchs["dom"]==e1)&(matchs["ext"]==e2))|
-                ((matchs["dom"]==e2)&(matchs["ext"]==e1))]
+    if d.empty:
+        st.info("Aucun but recensé entre ces deux équipes."); st.stop()
+    matchs_h2h=construire_matchs()
+    mh2h=matchs_h2h[((matchs_h2h["dom"]==e1)&(matchs_h2h["ext"]==e2))|
+                    ((matchs_h2h["dom"]==e2)&(matchs_h2h["ext"]==e1))]
     b1=int((d["equipe_marque"]==e1).sum()); b2=int((d["equipe_marque"]==e2).sum())
     v1=(int(((mh2h["dom"]==e1)&(mh2h["res_dom"]=="V")).sum())+
         int(((mh2h["ext"]==e1)&(mh2h["res_ext"]=="V")).sum()))
@@ -1436,34 +1652,27 @@ elif page == "Confrontations":
     nb_nuls=len(mh2h)-v1-v2
     coul1=COULEUR_EQUIPE.get(e1,D1_ROUGE); coul2=COULEUR_EQUIPE.get(e2,D1_BLEU)
     lg1=logo_b64(e1,44); lg2=logo_b64(e2,44)
-    tot_b=b1+b2 or 1
-    pct1=b1/tot_b*100; pct2=b2/tot_b*100
+    tot_b=b1+b2 or 1; pct1=b1/tot_b*100; pct2=b2/tot_b*100
     st.markdown(
         f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};border-radius:13px;padding:1.1rem;margin-bottom:.8rem">'
         f'<div style="display:flex;align-items:center;justify-content:space-between">'
-        f'<div style="flex:1;text-align:center">{lg1}<br><b style="font-size:.88rem">{e1.split()[0]}</b>'
+        f'<div style="flex:1;text-align:center">{lg1}<br><b style="font-size:.88rem">{nc(e1)}</b>'
         f'<div style="color:{coul1};font-size:1.9rem;font-weight:900;margin:.2rem 0">{b1}</div>'
-        f'<div style="color:{D1_GRIS};font-size:.75rem">{v1} victoire{"s" if v1!=1 else ""}</div>'
-        f'</div>'
+        f'<div style="color:{D1_GRIS};font-size:.75rem">{v1} victoire{"s" if v1!=1 else ""}</div></div>'
         f'<div style="text-align:center;padding:0 1.2rem">'
         f'<div style="color:{D1_GRIS};font-size:.75rem;margin-bottom:.25rem">{len(mh2h)} rencontre{"s" if len(mh2h)!=1 else ""}</div>'
         f'<div style="font-size:1.2rem;font-weight:700;color:{D1_GRIS}">VS</div>'
-        f'<div style="color:{D1_GRIS};font-size:.75rem;margin-top:.25rem">{nb_nuls} nul{"s" if nb_nuls!=1 else ""}</div>'
-        f'</div>'
-        f'<div style="flex:1;text-align:center">{lg2}<br><b style="font-size:.88rem">{e2.split()[0]}</b>'
+        f'<div style="color:{D1_GRIS};font-size:.75rem;margin-top:.25rem">{nb_nuls} nul{"s" if nb_nuls!=1 else ""}</div></div>'
+        f'<div style="flex:1;text-align:center">{lg2}<br><b style="font-size:.88rem">{nc(e2)}</b>'
         f'<div style="color:{coul2};font-size:1.9rem;font-weight:900;margin:.2rem 0">{b2}</div>'
-        f'<div style="color:{D1_GRIS};font-size:.75rem">{v2} victoire{"s" if v2!=1 else ""}</div>'
-        f'</div></div>'
+        f'<div style="color:{D1_GRIS};font-size:.75rem">{v2} victoire{"s" if v2!=1 else ""}</div></div></div>'
         f'<div style="margin-top:.8rem">'
         f'<div style="display:flex;height:8px;border-radius:4px;overflow:hidden">'
         f'<div style="width:{pct1:.1f}%;background:{coul1}"></div>'
-        f'<div style="width:{pct2:.1f}%;background:{coul2}"></div>'
-        f'</div>'
+        f'<div style="width:{pct2:.1f}%;background:{coul2}"></div></div>'
         f'<div style="display:flex;justify-content:space-between;font-size:.74rem;color:{D1_GRIS};margin-top:.15rem">'
-        f'<span>{pct1:.0f}% des buts</span><span>{pct2:.0f}% des buts</span></div>'
-        f'</div></div>',
-        unsafe_allow_html=True
-    )
+        f'<span>{pct1:.0f}% des buts</span><span>{pct2:.0f}% des buts</span></div></div></div>',
+        unsafe_allow_html=True)
     if len(mh2h):
         st.markdown("### Résultats")
         for _,m in mh2h.sort_values("journee").iterrows():
@@ -1477,10 +1686,9 @@ elif page == "Confrontations":
                 f'<span style="font-weight:800;padding:0 .7rem">'
                 f'<span style="color:{bc_dom}">{m["score_dom"]}</span>'
                 f'<span style="color:{D1_GRIS}"> — </span>'
-                f'<span style="color:{bc_ext}">{m["score_ext"]}</span>'
-                f'</span>'
-                f'<span style="flex:1;font-weight:600">{m["ext"]}</span>'
-                f'</div>', unsafe_allow_html=True)
+                f'<span style="color:{bc_ext}">{m["score_ext"]}</span></span>'
+                f'<span style="flex:1;font-weight:600">{m["ext"]}</span></div>',
+                unsafe_allow_html=True)
     st.markdown("### Détail des buts")
     det=(d.sort_values(["journee","periode","minute"])
          [["journee","equipe_marque","joueur","periode","minute","situation","origine"]]
@@ -1488,770 +1696,8 @@ elif page == "Confrontations":
                           "periode":"Pér.","minute":"Min","situation":"Situation","origine":"Origine"}))
     det["Origine"]=det["Origine"].fillna("—")
     st.dataframe(det,use_container_width=True,height=320)
-    dl_csv(det,"⬇ CSV",f"h2h_{e1[:6]}_{e2[:6]}.csv")
+    dl_csv(det,"⬇ CSV",f"h2h_{nc(e1)}_{nc(e2)}.csv")
 
-# ============================================================================
-# PAGE — SCOUTING ADVERSE
-# ============================================================================
-# PAGE Scouting → fusionnée dans Fiche équipe
-elif page == "Analyse avancée":
-    st.title("Analyse avancée")
-
-    matchs = construire_matchs()
-
-    # ---- RÉGULARITÉ OFFENSIVE ----
-    st.markdown("### Régularité offensive")
-    st.markdown("<p class='note'>Moyenne de buts par match, et indice de régularité "
-                "(plus l'écart-type est bas, plus l'équipe est constante d'un match à l'autre).</p>",
-                unsafe_allow_html=True)
-    rows_reg = []
-    for eq in EQUIPES:
-        meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-        bpm = []
-        for _,m in meq.iterrows():
-            dm = df[(df["journee"]==m["journee"])&
-                    (df["equipe_domicile"]==m["dom"])&
-                    (df["equipe_exterieure"]==m["ext"])]
-            bpm.append(int((dm["equipe_marque"]==eq).sum()))
-        if bpm:
-            rows_reg.append({"equipe":eq,"moy":pd.Series(bpm).mean(),
-                             "std":pd.Series(bpm).std(ddof=0),"min":min(bpm),"max":max(bpm)})
-    reg = pd.DataFrame(rows_reg).sort_values("moy",ascending=False)
-
-    cg_r, cd_r = st.columns(2)
-    with cg_r:
-        st.markdown("#### Moyenne de buts par match")
-        fig_moy = go.Figure()
-        for _,r in reg.iterrows():
-            coul = COULEUR_EQUIPE.get(r["equipe"], D1_ROUGE)
-            fig_moy.add_trace(go.Bar(
-                x=[round(r["moy"],1)], y=[r["equipe"]], orientation="h",
-                marker_color=coul, text=[f'{r["moy"]:.1f}'],
-                textposition="auto", textangle=0, showlegend=False,
-                hovertemplate=f'{r["equipe"]}<br>Moyenne : {r["moy"]:.1f} buts/match<br>'
-                              f'Mini : {r["min"]} · Maxi : {r["max"]}<extra></extra>'
-            ))
-        fig_moy.update_yaxes(autorange="reversed")
-        st.plotly_chart(style_fig(fig_moy, max(320,30*len(reg))), use_container_width=True)
-    with cd_r:
-        st.markdown("#### Régularité (écart-type, plus bas = plus constant)")
-        reg_s = reg.sort_values("std")
-        fig_std = go.Figure()
-        for _,r in reg_s.iterrows():
-            # vert si régulier (std bas), rouge si irrégulier (std haut)
-            ratio = (r["std"]-reg_s["std"].min())/((reg_s["std"].max()-reg_s["std"].min()) or 1)
-            coul = D1_VERT if ratio<0.4 else(D1_OR if ratio<0.7 else D1_ROUGE)
-            fig_std.add_trace(go.Bar(
-                x=[round(r["std"],1)], y=[r["equipe"]], orientation="h",
-                marker_color=coul, text=[f'± {r["std"]:.1f}'],
-                textposition="auto", textangle=0, showlegend=False,
-                hovertemplate=f'{r["equipe"]}<br>Écart-type : {r["std"]:.1f}<extra></extra>'
-            ))
-        fig_std.update_yaxes(autorange="reversed")
-        st.plotly_chart(style_fig(fig_std, max(320,30*len(reg_s))), use_container_width=True)
-    st.markdown("<p class='note'>🟢 régulier · 🟡 moyen · 🔴 irrégulier — survole une barre pour le détail mini/maxi.</p>",
-                unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # ---- MOMENTUM DÉBUT / FIN DE PÉRIODE ----
-    st.markdown("### Momentum : buts selon le moment de la période")
-    eq_sel = st.selectbox("Équipe (ou tout le championnat)", ["Tout le championnat"]+EQUIPES,
-                          key="momentum_sel")
-    d_mom = df if eq_sel=="Tout le championnat" else df[df["equipe_marque"]==eq_sel]
-
-    # Tranches : début P1 (1-5), milieu P1 (6-15), fin P1 (16-20)
-    #            début P2 (21-25), milieu P2 (26-35), fin P2 (36-40)
-    def tranche_moment(row):
-        m = row["minute"]; p = row["periode"]
-        if p==1:
-            if m<=5:  return "Début P1 (1-5')"
-            elif m<=15: return "Milieu P1 (6-15')"
-            else:       return "Fin P1 (16-20')"
-        else:
-            if m<=25: return "Début P2 (21-25')"
-            elif m<=35: return "Milieu P2 (26-35')"
-            else:       return "Fin P2 (36-40')"
-
-    d_mom2 = d_mom.copy()
-    d_mom2["moment"] = d_mom2.apply(tranche_moment, axis=1)
-    ordre_mom = ["Début P1 (1-5')","Milieu P1 (6-15')","Fin P1 (16-20')",
-                 "Début P2 (21-25')","Milieu P2 (26-35')","Fin P2 (36-40')"]
-    mom_cnt = d_mom2["moment"].value_counts().reindex(ordre_mom, fill_value=0)
-    coul_mom = [D1_ROUGE]*3 + [D1_BORDEAUX_2]*3
-    fig_mom = go.Figure(go.Bar(
-        x=ordre_mom, y=mom_cnt.values,
-        marker_color=coul_mom, text=mom_cnt.values,
-        textposition="outside", textangle=0
-    ))
-    fig_mom.update_yaxes(showticklabels=False)
-    st.plotly_chart(style_fig(fig_mom, 280), use_container_width=True)
-    # Identifier le moment le plus productif
-    best = mom_cnt.idxmax()
-    st.markdown(f"<p class='note'>Moment le plus productif : <b>{best}</b> ({int(mom_cnt.max())} buts)</p>",
-                unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # ---- CONCENTRATION OFFENSIVE ----
-    st.markdown("### Concentration offensive — dépendance aux buteurs clés")
-    rows_conc = []
-    for eq in EQUIPES:
-        dp = df[df["equipe_marque"]==eq]
-        if len(dp)==0: continue
-        bb = dp["joueur"].value_counts()
-        rows_conc.append({
-            "equipe":eq,
-            "top1_pct": bb.iloc[0]/len(dp)*100,
-            "top3_pct": bb.head(3).sum()/len(dp)*100,
-            "nb_buteurs": len(bb),
-        })
-    conc = pd.DataFrame(rows_conc).sort_values("top3_pct", ascending=False)
-
-    cg, cd = st.columns(2)
-    with cg:
-        st.markdown("#### Part du top buteur dans les buts de l'équipe")
-        fig_c1 = go.Figure()
-        for _,r in conc.sort_values("top1_pct",ascending=False).iterrows():
-            c = COULEUR_EQUIPE.get(r["equipe"], D1_ROUGE)
-            fig_c1.add_trace(go.Bar(x=[r["top1_pct"]], y=[nc(r["equipe"])], orientation="h",
-                                    marker_color=c, text=[f'{r["top1_pct"]:.0f}%'],
-                                    textposition="outside", textangle=0, showlegend=False,
-                                    textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
-        fig_c1.update_yaxes(autorange="reversed")
-        st.plotly_chart(style_fig(fig_c1, max(280,28*len(conc))), use_container_width=True)
-    with cd:
-        st.markdown("#### Nombre de buteurs différents utilisés")
-        fig_c2 = go.Figure()
-        for _,r in conc.sort_values("nb_buteurs",ascending=False).iterrows():
-            c = COULEUR_EQUIPE.get(r["equipe"], D1_ROUGE)
-            fig_c2.add_trace(go.Bar(x=[r["nb_buteurs"]], y=[nc(r["equipe"])], orientation="h",
-                                    marker_color=c, text=[int(r["nb_buteurs"])],
-                                    textposition="outside", textangle=0, showlegend=False,
-                                    textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
-        fig_c2.update_yaxes(autorange="reversed")
-        st.plotly_chart(style_fig(fig_c2, max(280,28*len(conc))), use_container_width=True)
-
-    st.markdown("---")
-
-    # ---- RADAR COMPARATIF ----
-    st.markdown("### Radar comparatif — profil d'équipe")
-    st.markdown("<p class='note'>Sélectionne 2 à 4 équipes à comparer.</p>", unsafe_allow_html=True)
-    eq_radar = st.multiselect("Équipes", EQUIPES, default=EQUIPES[:3], max_selections=4)
-
-    if len(eq_radar) >= 2:
-        # Axes défendables : tous orientés "plus = mieux", comparables entre eux
-        indicateurs = [
-            "Volume offensif",      # buts/match → plus = mieux
-            "Solidité défensive",   # inverse buts encaissés/match → plus = mieux
-            "Résistance",           # % résultat positif quand mené → plus = mieux
-            "Régularité",           # inverse écart-type buts/match → plus = mieux
-            "Collectif",            # nb buteurs différents → plus = mieux (moins dépendant)
-        ]
-
-        def radar_vals(eq):
-            dp = df[df["equipe_marque"]==eq]
-            dc = df[df["equipe_encaisse"]==eq]
-            meq_r = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-            nm = len(meq_r) or 1
-
-            # 1. Volume offensif : buts/match
-            vol_off = len(dp)/nm
-
-            # 2. Solidité défensive : buts encaissés/match inversé
-            # On stocke la valeur brute, l'inversion se fait après normalisation
-            enc_pm = len(dc)/nm
-
-            # 3. Résistance : parmi les matchs où l'équipe a été menée,
-            #    % avec résultat positif (V ou N). Calculé via retournements.
-            rs_r = analyser_retours_score(eq)
-            menes = rs_r["mv"] + rs_r["mn"] + rs_r["md"]
-            resistance = (rs_r["mv"]+rs_r["mn"])/menes*100 if menes > 0 else 50
-
-            # 4. Régularité : inverse de l'écart-type des buts/match
-            #    Plus l'écart-type est bas, plus la régularité est haute
-            bpm_list = []
-            for _, m in meq_r.iterrows():
-                dm2 = df[(df["journee"]==m["journee"])&
-                         (df["equipe_domicile"]==m["dom"])&
-                         (df["equipe_exterieure"]==m["ext"])]
-                bpm_list.append(int((dm2["equipe_marque"]==eq).sum()))
-            std = pd.Series(bpm_list).std(ddof=0) if len(bpm_list)>1 else 0
-            # On stocke std, l'inversion se fait après normalisation
-
-            # 5. Collectif : nb buteurs différents
-            collectif = float(dp["joueur"].nunique())
-
-            return [vol_off, enc_pm, resistance, std, collectif]
-
-        all_vals = {eq: radar_vals(eq) for eq in eq_radar}
-        all_matrix = pd.DataFrame(all_vals, index=indicateurs)
-
-        # Normalisation 0-100 avec inversion pour Solidité déf. et Régularité
-        axes_inverses = {"Solidité défensive", "Régularité"}
-        norm = all_matrix.copy()
-        for idx in indicateurs:
-            mn = all_matrix.loc[idx].min(); mx = all_matrix.loc[idx].max()
-            if mx != mn:
-                vals_norm = (all_matrix.loc[idx] - mn) / (mx - mn) * 100
-                if idx in axes_inverses:
-                    vals_norm = 100 - vals_norm  # inverser : moins encaissé/irrégulier = plus haut
-                norm.loc[idx] = vals_norm
-            else:
-                norm.loc[idx] = 50
-
-        fig_radar = go.Figure()
-        for eq in eq_radar:
-            vals = norm[eq].tolist()
-            # Valeurs brutes pour le hover
-            raw = all_matrix[eq].tolist()
-            raw_labels = [
-                f"{raw[0]:.1f} buts/match",
-                f"{raw[1]:.1f} encaissés/match",
-                f"{raw[2]:.0f}% résultat positif quand mené",
-                f"écart-type {raw[3]:.1f}",
-                f"{int(raw[4])} buteurs différents",
-            ]
-            vals_closed = vals + [vals[0]]
-            cats = indicateurs + [indicateurs[0]]
-            raw_closed = raw_labels + [raw_labels[0]]
-            coul = COULEUR_EQUIPE.get(eq, D1_ROUGE)
-            fig_radar.add_trace(go.Scatterpolar(
-                r=vals_closed, theta=cats, name=nc(eq),
-                line=dict(color=coul, width=2.5),
-                fill="toself", fillcolor=hex_to_rgba(coul, 0.15),
-                customdata=raw_closed,
-                hovertemplate="<b>%{theta}</b><br>%{customdata}<extra></extra>",
-            ))
-        fig_radar.update_layout(
-            polar=dict(
-                bgcolor="rgba(0,0,0,0)",
-                radialaxis=dict(visible=True, range=[0,100],
-                                gridcolor="rgba(255,255,255,.1)",
-                                tickfont=dict(size=9), ticksuffix=""),
-                angularaxis=dict(gridcolor="rgba(255,255,255,.1)",
-                                 tickfont=dict(size=13, color=D1_BLANC))
-            )
-        )
-        st.plotly_chart(style_fig(fig_radar, 480), use_container_width=True)
-
-        # Légende des axes
-        st.markdown(
-            f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
-            f'border-radius:10px;padding:.8rem 1.1rem;font-size:.8rem;color:{D1_GRIS}">'
-            f'<b style="color:{D1_BLANC}">Lecture du radar</b> — tous les axes sont orientés "plus = mieux" '
-            f'et normalisés 0-100 entre les équipes sélectionnées. Survole une trace pour les valeurs brutes.<br>'
-            f'<b>Volume offensif</b> = buts marqués/match · '
-            f'<b>Solidité défensive</b> = moins de buts encaissés/match · '
-            f'<b>Résistance</b> = % de résultats positifs (V ou N) quand l\'équipe est menée · '
-            f'<b>Régularité</b> = constance du volume de buts d\'un match à l\'autre · '
-            f'<b>Collectif</b> = nombre de buteurs différents utilisés'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-
-    st.markdown("---")
-
-    # ---- HEATMAP MINUTE × ÉQUIPE ----
-    st.markdown("### Heatmap — quand chaque équipe marque (minutes)")
-    st.markdown("<p class='note'>Intensité = nombre de buts marqués à cette minute sur toute la saison. "
-                "Repère les équipes qui marquent tôt, tard, ou de façon régulière.</p>",
-                unsafe_allow_html=True)
-
-    eq_hm = st.multiselect("Équipes (laisser vide = toutes)", EQUIPES,
-                            default=[], key="hm_eq")
-    equipes_hm = eq_hm if eq_hm else EQUIPES
-
-    clt_hm = construire_classement()
-    ordre_hm = [e for e in clt_hm["equipe"].tolist() if e in equipes_hm]
-
-    pivot_hm2 = (df[df["equipe_marque"].isin(equipes_hm)]
-                 .groupby(["equipe_marque","minute"]).size()
-                 .reset_index(name="buts")
-                 .pivot(index="equipe_marque",columns="minute",values="buts")
-                 .reindex(ordre_hm)
-                 .reindex(columns=range(1,41), fill_value=0)
-                 .fillna(0))
-
-    fig_hm2 = go.Figure(go.Heatmap(
-        z=pivot_hm2.values,
-        x=[f"{m}'" for m in range(1,41)],
-        y=[nc(e) for e in pivot_hm2.index],
-        colorscale=[[0,"rgba(38,24,28,1)"],[0.4,"rgba(140,10,24,0.7)"],[1,D1_ROUGE]],
-        text=[[str(int(v)) if v>0 else "" for v in row] for row in pivot_hm2.values],
-        texttemplate="%{text}",
-        textfont=dict(size=10, color="white"),
-        hovertemplate="<b>%{y}</b> · %{x}<br>%{z} buts<extra></extra>",
-        showscale=True,
-        colorbar=dict(len=0.8, thickness=12, tickfont=dict(size=10))
-    ))
-    # Ligne mi-temps
-    fig_hm2.add_vline(x="20'", line_dash="dot", line_color=D1_GRIS, line_width=1.5,
-                      annotation_text="Mi-temps", annotation_font_color=D1_GRIS,
-                      annotation_position="top")
-    fig_hm2.update_xaxes(tickfont=dict(size=10),
-                          tickvals=[f"{m}'" for m in [1,5,10,15,20,25,30,35,40]])
-    fig_hm2.update_yaxes(tickfont=dict(size=11))
-    st.plotly_chart(style_fig(fig_hm2, max(300, 38*len(ordre_hm))),
-                    use_container_width=True)
-# ============================================================================
-
-def _get_matchs():
-    return construire_matchs()
-
-def analyser_premier_but(eq):
-    matchs = _get_matchs()
-    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    res = {"marque":{"V":0,"N":0,"D":0,"total":0},
-           "encaisse":{"V":0,"N":0,"D":0,"total":0}}
-    for _,m in meq.iterrows():
-        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
-                (df["equipe_exterieure"]==m["ext"])]
-        if len(dm)==0: continue
-        first = dm.sort_values(["periode","minute"]).iloc[0]
-        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
-        cle = "marque" if first["equipe_marque"]==eq else "encaisse"
-        res[cle][r] += 1; res[cle]["total"] += 1
-    return res
-
-def analyser_dom_ext(eq):
-    matchs = _get_matchs()
-    dom_m = matchs[matchs["dom"]==eq]
-    ext_m = matchs[matchs["ext"]==eq]
-    vd=int((dom_m["res_dom"]=="V").sum()); nd=int((dom_m["res_dom"]=="N").sum()); dd=int((dom_m["res_dom"]=="D").sum())
-    ve=int((ext_m["res_ext"]=="V").sum()); ne=int((ext_m["res_ext"]=="N").sum()); de=int((ext_m["res_ext"]=="D").sum())
-    return {"dom":(vd,nd,dd),"ext":(ve,ne,de)}
-
-def analyser_retours_score(eq):
-    matchs = _get_matchs()
-    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    jamais=0; mv=0; mn=0; md=0
-    for _,m in meq.iterrows():
-        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
-                (df["equipe_exterieure"]==m["ext"])]
-        goals = dm.sort_values(["periode","minute"])
-        is_dom = (m["dom"]==eq)
-        was_trailing = False; sd=0; se=0
-        for _,b in goals.iterrows():
-            if b["equipe_marque"]==m["dom"]: sd+=1
-            else: se+=1
-            seq = sd if is_dom else se
-            saq = se if is_dom else sd
-            if seq < saq: was_trailing=True; break
-        r = m["res_dom"] if is_dom else m["res_ext"]
-        if not was_trailing: jamais+=1
-        elif r=="V": mv+=1
-        elif r=="N": mn+=1
-        else: md+=1
-    return {"jamais":jamais,"mv":mv,"mn":mn,"md":md}
-
-def analyser_momentum(eq):
-    matchs = _get_matchs()
-    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    trans = {"MM":[],"ME":[],"EM":[],"EE":[]}
-    for _,m in meq.iterrows():
-        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
-                (df["equipe_exterieure"]==m["ext"])]
-        if len(dm)<2: continue
-        goals = dm.sort_values(["periode","minute"])
-        mins = goals["minute"].values; teams = goals["equipe_marque"].values
-        for i in range(len(goals)-1):
-            delta = max(1, int(mins[i+1])-int(mins[i]))
-            t1="M" if teams[i]==eq else "E"
-            t2="M" if teams[i+1]==eq else "E"
-            trans[t1+t2].append(delta)
-    labels={"MM":"Marque → Marque","ME":"Marque → Encaisse",
-            "EM":"Encaisse → Marque","EE":"Encaisse → Encaisse"}
-    return {labels[k]: (round(sum(v)/len(v)) if v else None) for k,v in trans.items()}
-
-def analyser_bilan_top6(eq):
-    matchs = _get_matchs()
-    clt = construire_classement()
-    top6 = [e for e in clt.head(6)["equipe"].tolist() if e != eq]
-    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    bvt = meq[(meq["dom"].isin(top6))|(meq["ext"].isin(top6))]
-    v=0; n=0; d=0
-    for _,m in bvt.iterrows():
-        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
-        if r=="V": v+=1
-        elif r=="N": n+=1
-        else: d+=1
-    return v,n,d
-
-def _carte_stat(titre, valeur_principale, sous_texte=None, couleur=None):
-    """Carte métrique stylisée pour l'analyse tactique."""
-    c = couleur or D1_ROUGE
-    html = (
-        f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
-        f'border-top:4px solid {c};border-radius:12px;padding:1.2rem 1.3rem;height:100%;min-height:110px">'
-        f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
-        f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.5rem">{titre}</div>'
-        f'<div style="font-size:2.4rem;font-weight:900;color:{c};line-height:1.1">{valeur_principale}</div>'
-    )
-    if sous_texte:
-        html += f'<div style="font-size:.85rem;color:{D1_GRIS};margin-top:.4rem;font-weight:500">{sous_texte}</div>'
-    html += '</div>'
-    return html
-# ============================================================================
-# PDF RAPPORT COMPLET — style Laval (fond blanc, couleur équipe)
-# ============================================================================
-def pdf_rapport_complet(eq):
-    """PDF complet avec fond blanc, structure identique au rapport Laval."""
-    from reportlab.platypus import KeepTogether
-
-    buf  = BytesIO()
-    doc  = SimpleDocTemplate(buf, pagesize=A4,
-                              topMargin=1.5*cm, bottomMargin=1.5*cm,
-                              leftMargin=1.8*cm, rightMargin=1.8*cm)
-
-    # Couleurs
-    coul_hex = COULEUR_EQUIPE.get(eq, D1_ROUGE)
-    COUL     = colors.HexColor(coul_hex)
-    BLANC    = colors.white
-    GRIS     = colors.HexColor("#F7F4F5")
-    BORD     = colors.HexColor("#E0D8DA")
-    TEXTE    = colors.HexColor("#1A1A1E")
-    TEXTE_G  = colors.HexColor("#6B6066")
-    VERT_RL  = colors.HexColor(D1_VERT)
-    OR_RL    = colors.HexColor(D1_OR)
-    ROUGE_RL = colors.HexColor(D1_ROUGE)
-
-    stl = getSampleStyleSheet()
-    def ps(name, **kw):
-        return ParagraphStyle(name, parent=stl["Normal"], **kw)
-
-    titre_section = ps("tit_sec", textColor=BLANC, fontSize=11, fontName="Helvetica-Bold",
-                        backColor=COUL, borderPadding=(6, 8, 6, 8), spaceBefore=14, spaceAfter=6)
-    sous_titre    = ps("sous", textColor=COUL, fontSize=10, fontName="Helvetica-Bold",
-                        spaceBefore=8, spaceAfter=3)
-    corps         = ps("corps", textColor=TEXTE, fontSize=8.5, spaceBefore=1, spaceAfter=1)
-    gris_stl      = ps("gr", textColor=TEXTE_G, fontSize=8, spaceBefore=1, spaceAfter=1)
-
-    def sep():
-        return HRFlowable(width="100%", thickness=0.6, color=BORD, spaceAfter=4, spaceBefore=2)
-
-    def tbl_style_base():
-        return [
-            ("FONTSIZE", (0,0), (-1,-1), 8.5),
-            ("TOPPADDING", (0,0), (-1,-1), 4),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
-            ("GRID", (0,0), (-1,-1), 0.4, BORD),
-            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-            ("ALIGN", (1,0), (-1,-1), "CENTER"),
-        ]
-
-    def header_row():
-        return [
-            ("BACKGROUND", (0,0), (-1,0), COUL),
-            ("TEXTCOLOR", (0,0), (-1,0), BLANC),
-            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ]
-
-    def zebra():
-        return [("ROWBACKGROUNDS", (0,1), (-1,-1), [BLANC, GRIS])]
-
-    def mini_barre_h(val, max_val, w=5*cm, h=9, coul_fill=None):
-        """Mini barre horizontale ReportLab."""
-        cf = colors.HexColor(coul_fill) if coul_fill else COUL
-        d = Drawing(w, h+2)
-        d.add(Rect(0, 0, w, h, fillColor=colors.HexColor("#F0EDED"), strokeColor=None))
-        if max_val > 0:
-            d.add(Rect(0, 0, val/max_val*w, h, fillColor=cf, strokeColor=None))
-        return d
-
-    # ---- DONNÉES ----
-    matchs   = _get_matchs()
-    clt      = construire_classement()
-    rang_row = clt[clt["equipe"]==eq].iloc[0]
-    rang     = clt[clt["equipe"]==eq].index[0]+1
-    dpour    = df[df["equipe_marque"]==eq]
-    dcontre  = df[df["equipe_encaisse"]==eq]
-    meq      = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    n_m      = len(meq) or 1
-    j_max    = max(JOURNEES)
-    pb       = analyser_premier_but(eq)
-    de_stats = analyser_dom_ext(eq)
-    rs_data  = analyser_retours_score(eq)
-    mo_data  = analyser_momentum(eq)
-    vt6, nt6, dt6 = analyser_bilan_top6(eq)
-    tot_t6   = vt6+nt6+dt6
-    vd, nd, dd = de_stats["dom"]; ve, ne_, de_ = de_stats["ext"]
-    td = vd+nd+dd or 1; te = ve+ne_+de_ or 1
-
-    elems = []
-
-    # ---- HEADER ----
-    logo_p = LOGOS_DIR / f"{eq}.png"
-    header_data = [[
-        Paragraph(f'<font size="20" color="{coul_hex}"><b>{eq}</b></font><br/>'
-                  f'<font size="9" color="#6B6066">D1 Futsal · Saison 2025–2026 · J1→J{j_max}</font>',
-                  ps("hdr", leading=22)),
-        ""
-    ]]
-    if logo_p.exists():
-        try:
-            logo_img = RLImage(str(logo_p), width=2*cm, height=2*cm)
-            header_data = [[
-                Paragraph(f'<font size="20" color="{coul_hex}"><b>{eq}</b></font><br/>'
-                          f'<font size="9" color="#6B6066">D1 Futsal · Saison 2025–2026 · J1→J{j_max}</font>',
-                          ps("hdr", leading=22)),
-                logo_img
-            ]]
-        except Exception:
-            pass
-
-    t_hdr = Table(header_data, colWidths=[13.5*cm, 3*cm])
-    t_hdr.setStyle(TableStyle([
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("ALIGN", (1,0), (1,0), "RIGHT"),
-        ("LINEBELOW", (0,0), (-1,0), 2, COUL),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
-    ]))
-    elems += [t_hdr, Spacer(1, 8)]
-
-    # ---- SECTION 01 : VUE D'ENSEMBLE ----
-    elems.append(Paragraph("SECTION 01 — Vue d'ensemble", titre_section))
-
-    # 4 KPIs
-    tv = int(rang_row["V"])/n_m*100
-    kpi_data = [
-        [Paragraph(f'<font color="{coul_hex}"><b>POINTS</b></font>', corps),
-         Paragraph(f'<font color="{coul_hex}"><b>BUTS MARQUÉS</b></font>', corps),
-         Paragraph(f'<font color="{coul_hex}"><b>BUTS ENCAISSÉS</b></font>', corps),
-         Paragraph(f'<font color="{coul_hex}"><b>TAUX DE VICTOIRE</b></font>', corps)],
-        [Paragraph(f'<font size="22" color="{coul_hex}"><b>{int(rang_row["Pts"])}</b></font>', ps("kv",alignment=1)),
-         Paragraph(f'<font size="22" color="{coul_hex}"><b>{int(rang_row["BP"])}</b></font>', ps("kv2",alignment=1)),
-         Paragraph(f'<font size="22" color="{coul_hex}"><b>{int(rang_row["BC"])}</b></font>', ps("kv3",alignment=1)),
-         Paragraph(f'<font size="22" color="{coul_hex}"><b>{tv:.0f}%</b></font>', ps("kv4",alignment=1))],
-        [Paragraph(f'{int(rang_row["Pts"])/n_m:.1f} pts/match', gris_stl),
-         Paragraph(f'{len(dpour)/n_m:.1f} buts/match', gris_stl),
-         Paragraph(f'{len(dcontre)/n_m:.1f} buts/match', gris_stl),
-         Paragraph(f'{int(rang_row["V"])}V · {int(rang_row["N"])}N · {int(rang_row["D"])}D', gris_stl)],
-    ]
-    t_kpi = Table(kpi_data, colWidths=[4.1*cm]*4)
-    t_kpi.setStyle(TableStyle([
-        ("ALIGN", (0,0), (-1,-1), "CENTER"), ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("BACKGROUND", (0,0), (-1,0), GRIS),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("GRID", (0,0), (-1,-1), 0.5, BORD),
-        ("ROWBACKGROUNDS", (0,0), (-1,-1), [GRIS, BLANC, GRIS]),
-        ("TOPPADDING", (0,0), (-1,-1), 5), ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-    ]))
-    elems += [t_kpi, Spacer(1, 4)]
-
-    # Rang + bilan top 6
-    extra_data = [
-        ["Position au classement", Paragraph(f'<font color="{coul_hex}"><b>{rang}e</b></font>', corps)],
-    ]
-    if tot_t6:
-        extra_data.append(["Bilan vs Top 6",
-            Paragraph(f'<font color="{coul_hex}"><b>{vt6}V · {nt6}N · {dt6}D  ({vt6/tot_t6*100:.0f}% victoires)</b></font>', corps)])
-    t_extra = Table(extra_data, colWidths=[9*cm, 7.5*cm])
-    t_extra.setStyle(TableStyle([
-        ("FONTSIZE", (0,0), (-1,-1), 8.5), ("TOPPADDING", (0,0), (-1,-1), 3),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-        ("LINEBELOW", (0,0), (-1,-1), 0.3, BORD),
-    ]))
-    elems += [t_extra, Spacer(1, 6)]
-
-    # Fil de la saison
-    elems.append(Paragraph("Fil de la saison", sous_titre))
-    fil_data = [[
-        Paragraph("<b>J</b>", corps), Paragraph("<b>Adversaire</b>", corps),
-        Paragraph("<b>Score</b>", corps), Paragraph("<b>Rés.</b>", corps)
-    ]]
-    for _, m in meq.sort_values("journee").iterrows():
-        is_dom = (m["dom"]==eq)
-        adv = m["ext"] if is_dom else m["dom"]
-        sc = f'{m["score_dom"]}–{m["score_ext"]}' if is_dom else f'{m["score_ext"]}–{m["score_dom"]}'
-        r = m["res_dom"] if is_dom else m["res_ext"]
-        loc = "Dom" if is_dom else "Ext"
-        rc = (VERT_RL if r=="V" else (OR_RL if r=="N" else ROUGE_RL))
-        fil_data.append([
-            Paragraph(f'J{int(m["journee"])} ({loc})', corps),
-            Paragraph(nc(adv), corps),
-            Paragraph(sc, corps),
-            Paragraph(f'<font color="{"#27AE60" if r=="V" else ("#C9A24B" if r=="N" else "#C00018")}"><b>{r}</b></font>', corps)
-        ])
-    t_fil = Table(fil_data, colWidths=[2.5*cm, 8.5*cm, 2.5*cm, 3*cm], repeatRows=1)
-    t_fil.setStyle(TableStyle(tbl_style_base() + header_row() + zebra()))
-    elems += [t_fil, Spacer(1, 6)]
-
-    # ---- SECTION 02 : ANALYSE TACTIQUE ----
-    elems.append(Paragraph("SECTION 02 — Analyse Tactique", titre_section))
-
-    # Impact 1er but + Dom/Ext (2 colonnes)
-    m_tot = pb["marque"]["total"] or 1; e_tot = pb["encaisse"]["total"] or 1
-    mw = pb["marque"]["V"]/m_tot*100; ew = pb["encaisse"]["V"]/e_tot*100
-
-    pb_data = [[Paragraph("Impact du premier but", sous_titre), Paragraph("Domicile vs Extérieur", sous_titre)]]
-    pb_inner = [
-        [Paragraph(f'Marque 1er ({pb["marque"]["total"]} matchs)', corps),
-         Paragraph(f'<font color="{coul_hex}" size="16"><b>{mw:.0f}%</b></font>', ps("v1",alignment=1))],
-        [Paragraph(f'{pb["marque"]["V"]}V · {pb["marque"]["N"]}N · {pb["marque"]["D"]}D', gris_stl), ""],
-        [Paragraph(f'Encaisse 1er ({pb["encaisse"]["total"]} matchs)', corps),
-         Paragraph(f'<font color="#C00018" size="16"><b>{ew:.0f}%</b></font>', ps("v2",alignment=1))],
-        [Paragraph(f'{pb["encaisse"]["V"]}V · {pb["encaisse"]["N"]}N · {pb["encaisse"]["D"]}D', gris_stl), ""],
-    ]
-    t_pb_inner = Table(pb_inner, colWidths=[4.5*cm, 2.5*cm])
-    t_pb_inner.setStyle(TableStyle([
-        ("GRID", (0,0),(-1,-1), 0.3, BORD), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TOPPADDING",(0,0),(-1,-1),3), ("BOTTOMPADDING",(0,0),(-1,-1),3),
-        ("SPAN",(1,1),(1,1)), ("SPAN",(1,3),(1,3)),
-        ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#F0FFF4")),
-        ("BACKGROUND",(0,2),(-1,2),colors.HexColor("#FFF5F5")),
-    ]))
-
-    de_inner = [
-        [Paragraph(f'Domicile ({td} matchs)', corps),
-         Paragraph(f'<font color="{coul_hex}" size="16"><b>{vd/td*100:.0f}%</b></font>', ps("v3",alignment=1))],
-        [Paragraph(f'{vd}V · {nd}N · {dd}D', gris_stl), ""],
-        [Paragraph(f'Extérieur ({te} matchs)', corps),
-         Paragraph(f'<font color="{coul_hex}" size="16"><b>{ve/te*100:.0f}%</b></font>', ps("v4",alignment=1))],
-        [Paragraph(f'{ve}V · {ne_}N · {de_}D', gris_stl), ""],
-    ]
-    t_de_inner = Table(de_inner, colWidths=[4.5*cm, 2.5*cm])
-    t_de_inner.setStyle(TableStyle([
-        ("GRID",(0,0),(-1,-1),0.3,BORD), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TOPPADDING",(0,0),(-1,-1),3), ("BOTTOMPADDING",(0,0),(-1,-1),3),
-        ("ROWBACKGROUNDS",(0,0),(-1,-1),[BLANC,GRIS,BLANC,GRIS]),
-    ]))
-
-    t_row1 = Table([[t_pb_inner, t_de_inner]], colWidths=[8.2*cm, 8.2*cm])
-    t_row1.setStyle(TableStyle([
-        ("VALIGN",(0,0),(-1,-1),"TOP"),
-        ("LEFTPADDING",(0,0),(-1,-1),0), ("RIGHTPADDING",(0,0),(-1,-1),4),
-    ]))
-    elems += [t_row1, Spacer(1,6)]
-
-    # Retours au score + Momentum (2 colonnes)
-    rs_inner_data = [
-        [Paragraph("Jamais mené", corps),
-         Paragraph(f'<font color="#27AE60"><b>{rs_data["jamais"]}</b></font>', ps("rs",alignment=2)),
-         mini_barre_h(rs_data["jamais"], n_m, 4*cm, coul_fill=D1_VERT)],
-        [Paragraph("Est mené → Victoire", corps),
-         Paragraph(f'<font color="{coul_hex}"><b>{rs_data["mv"]}</b></font>', ps("rs2",alignment=2)),
-         mini_barre_h(rs_data["mv"], n_m, 4*cm, coul_fill=coul_hex)],
-        [Paragraph("Est mené → Nul", corps),
-         Paragraph(f'<font color="#C9A24B"><b>{rs_data["mn"]}</b></font>', ps("rs3",alignment=2)),
-         mini_barre_h(rs_data["mn"], n_m, 4*cm, coul_fill=D1_OR)],
-        [Paragraph("Est mené → Défaite", corps),
-         Paragraph(f'<font color="#C00018"><b>{rs_data["md"]}</b></font>', ps("rs4",alignment=2)),
-         mini_barre_h(rs_data["md"], n_m, 4*cm, coul_fill=D1_ROUGE)],
-    ]
-    t_rs = Table(rs_inner_data, colWidths=[3.5*cm, 1.2*cm, 4*cm])
-    t_rs.setStyle(TableStyle([
-        ("GRID",(0,0),(-1,-1),0.3,BORD), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TOPPADDING",(0,0),(-1,-1),4), ("BOTTOMPADDING",(0,0),(-1,-1),4),
-        ("ROWBACKGROUNDS",(0,0),(-1,-1),[BLANC,GRIS,BLANC,GRIS]),
-    ]))
-
-    mo_labels = {"Marque → Marque":"#27AE60","Marque → Encaisse":"#C9A24B",
-                 "Encaisse → Marque":coul_hex,"Encaisse → Encaisse":"#C00018"}
-    mo_inner_data = []
-    for label, val in mo_data.items():
-        badge_color = mo_labels.get(label, D1_GRIS)
-        txt = f"{val} min" if val else "—"
-        mo_inner_data.append([
-            Paragraph(label, corps),
-            Paragraph(f'<font color="{badge_color}" size="12"><b>{txt}</b></font>',
-                      ps(f"mo_{label[:3]}", alignment=2))
-        ])
-    t_mo = Table(mo_inner_data, colWidths=[5*cm, 2.7*cm])
-    t_mo.setStyle(TableStyle([
-        ("GRID",(0,0),(-1,-1),0.3,BORD), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
-        ("ROWBACKGROUNDS",(0,0),(-1,-1),[BLANC,GRIS,BLANC,GRIS]),
-    ]))
-
-    rs_header = Paragraph("Retours au score", sous_titre)
-    mo_header = Paragraph("Momentum après un but", sous_titre)
-    t_row2 = Table([[rs_header, mo_header],[t_rs, t_mo]], colWidths=[8.2*cm, 8.2*cm])
-    t_row2.setStyle(TableStyle([
-        ("VALIGN",(0,0),(-1,-1),"TOP"),
-        ("LEFTPADDING",(0,0),(-1,-1),0), ("RIGHTPADDING",(0,0),(-1,-1),4),
-    ]))
-    elems += [t_row2, Spacer(1,6)]
-
-    # ---- SECTION 03 : ANALYSE TEMPORELLE ----
-    elems.append(Paragraph("SECTION 03 — Analyse Temporelle", titre_section))
-    mins_p = dpour["minute"].dropna().astype(int)
-    mins_c = dcontre["minute"].dropna().astype(int)
-    tr_p = pd.cut(mins_p, bins=range(0,41,5), labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
-    tr_c = pd.cut(mins_c, bins=range(0,41,5), labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
-    max_tr = max(tr_p.max(), tr_c.max(), 1)
-
-    tr_data = [[Paragraph("<b>Tranche</b>", corps),
-                Paragraph("<b>Buts marqués</b>", corps), Paragraph("", corps),
-                Paragraph("<b>Buts encaissés</b>", corps), Paragraph("", corps)]]
-    for tr in tr_p.index:
-        vp = int(tr_p[tr]); vc = int(tr_c[tr])
-        is_p1 = tr in list(tr_p.index)[:4]
-        cf = coul_hex if is_p1 else D1_ROUGE
-        tr_data.append([
-            Paragraph(str(tr), corps),
-            Paragraph(f'<font color="{coul_hex}"><b>{vp}</b></font>', corps),
-            mini_barre_h(vp, int(max_tr), 6*cm, coul_fill=coul_hex),
-            Paragraph(f'<font color="#C00018"><b>{vc}</b></font>', corps),
-            mini_barre_h(vc, int(max_tr), 3.5*cm, coul_fill=D1_ROUGE),
-        ])
-    t_tr = Table(tr_data, colWidths=[1.8*cm, 1.2*cm, 6*cm, 1.2*cm, 3.5*cm], repeatRows=1)
-    t_tr.setStyle(TableStyle(tbl_style_base() + header_row() + zebra()))
-    elems += [t_tr, Spacer(1,6)]
-
-    # ---- SECTION 04 : BUTEURS ----
-    elems.append(Paragraph("SECTION 04 — Analyse des Buteurs", titre_section))
-    bb = dpour["joueur"].value_counts()
-    total_b = len(dpour) or 1
-    top3_pct = bb.head(3).sum()/total_b*100
-    elems.append(Paragraph(f'Top 3 : {bb.head(3).sum()} buts sur {total_b} ({top3_pct:.0f}%)', gris_stl))
-    elems.append(Spacer(1,4))
-    for joueur, nb in bb.head(10).items():
-        pct = nb/total_b*100
-        row_data = [[
-            Paragraph(nj(joueur), corps),
-            Paragraph(f'<font color="{coul_hex}"><b>{nb}</b></font>', ps(f"bj",alignment=1)),
-            mini_barre_h(nb, int(bb.max()), 7*cm, coul_fill=coul_hex),
-            Paragraph(f'{pct:.0f}%', gris_stl),
-        ]]
-        t_row = Table(row_data, colWidths=[4.5*cm, 1*cm, 7*cm, 1.5*cm])
-        t_row.setStyle(TableStyle([
-            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-            ("TOPPADDING",(0,0),(-1,-1),2), ("BOTTOMPADDING",(0,0),(-1,-1),2),
-            ("LINEBELOW",(0,0),(-1,-1),0.2,BORD),
-        ]))
-        elems.append(t_row)
-    elems.append(Spacer(1,6))
-
-    # ---- SECTION 05 : ORIGINES ----
-    if eq in EQUIPES_AVEC_ORIGINE:
-        elems.append(Paragraph("SECTION 05 — Origines des Buts", titre_section))
-        oo = dpour.loc[dpour["origine"].notna(),"origine"].value_counts()
-        n_r = int(dpour["origine"].notna().sum())
-        elems.append(Paragraph(f'{n_r} buts analysés sur {total_b}', gris_stl))
-        elems.append(Spacer(1,4))
-        for orig, nb in oo.items():
-            pct = nb/n_r*100
-            row_data = [[
-                Paragraph(orig, corps),
-                Paragraph(f'<font color="{coul_hex}"><b>{nb}</b></font>', ps(f"oo",alignment=1)),
-                mini_barre_h(nb, int(oo.max()), 7*cm, coul_fill=coul_hex),
-                Paragraph(f'{pct:.0f}%', gris_stl),
-            ]]
-            t_row = Table(row_data, colWidths=[4.5*cm, 1*cm, 7*cm, 1.5*cm])
-            t_row.setStyle(TableStyle([
-                ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-                ("TOPPADDING",(0,0),(-1,-1),2), ("BOTTOMPADDING",(0,0),(-1,-1),2),
-                ("LINEBELOW",(0,0),(-1,-1),0.2,BORD),
-            ]))
-            elems.append(t_row)
-
-    doc.build(elems)
-    buf.seek(0)
-    return buf
-
-
-# PAGE Analyse Tactique → fusionnée dans Fiche équipe
 
 if page == "Rapport équipe":
     st.title("Rapport équipe complet")
@@ -2778,8 +2224,8 @@ if page == "Fiche équipe":
 # ============================================================================
 # PAGE — LEXIQUE
 # ============================================================================
-elif page == "Lexique":
-    st.title("Lexique — Indicateurs & Calculs")
+elif page == "Méthodo & Couverture":
+    st.title("Méthodo & Couverture des données")
 
     st.markdown("### Origines des buts")
     origines_expl = {
