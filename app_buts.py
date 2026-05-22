@@ -698,6 +698,55 @@ if page == "Accueil":
     fig2.update_yaxes(showticklabels=False)
     st.plotly_chart(style_fig(fig2, 250), use_container_width=True)
 
+    st.markdown("### Domicile vs Extérieur — vue championnat")
+    matchs_acc = construire_matchs()
+    rows_de = []
+    for eq in EQUIPES:
+        dom_m = matchs_acc[matchs_acc["dom"]==eq]
+        ext_m = matchs_acc[matchs_acc["ext"]==eq]
+        vd=int((dom_m["res_dom"]=="V").sum()); td=len(dom_m) or 1
+        ve=int((ext_m["res_ext"]=="V").sum()); te=len(ext_m) or 1
+        rows_de.append({"eq":eq,"pct_dom":vd/td*100,"pct_ext":ve/te*100,"diff":vd/td*100-ve/te*100})
+    de_df = pd.DataFrame(rows_de).sort_values("pct_dom",ascending=False)
+    fig_de = go.Figure()
+    for _,r in de_df.iterrows():
+        coul = COULEUR_EQUIPE.get(r["eq"],D1_ROUGE)
+        fig_de.add_trace(go.Bar(name=r["eq"].split()[0]+" Dom",x=[r["eq"]],y=[r["pct_dom"]],
+                                marker_color=coul,showlegend=False,
+                                text=[f'{r["pct_dom"]:.0f}%'],textposition="outside",textangle=0))
+        fig_de.add_trace(go.Bar(name=r["eq"].split()[0]+" Ext",x=[r["eq"]],y=[r["pct_ext"]],
+                                marker_color=hex_to_rgba(coul,0.45),showlegend=False,
+                                text=[f'{r["pct_ext"]:.0f}%'],textposition="outside",textangle=0))
+    fig_de.update_layout(barmode="group")
+    fig_de.update_yaxes(showticklabels=False, range=[0,115])
+    st.plotly_chart(style_fig(fig_de, 320), use_container_width=True)
+    st.markdown("<p class='note'>Barre pleine = domicile · Barre transparente = extérieur</p>",
+                unsafe_allow_html=True)
+
+    st.markdown("### Heatmap — buts par équipe et par journée")
+    pivot_hm = df.groupby(["equipe_marque","journee"]).size().reset_index(name="buts")
+    pivot_hm = pivot_hm.pivot(index="equipe_marque",columns="journee",values="buts").fillna(0)
+    # Ordonner par classement
+    clt_acc = construire_classement()
+    ordre = clt_acc["equipe"].tolist()
+    pivot_hm = pivot_hm.reindex(ordre)
+    fig_hm = go.Figure(go.Heatmap(
+        z=pivot_hm.values,
+        x=[f"J{j}" for j in pivot_hm.columns],
+        y=[e.split()[0] for e in pivot_hm.index],
+        colorscale=[[0,"rgba(38,24,28,1)"],[0.3,f"rgba(140,10,24,0.6)"],[1,D1_ROUGE]],
+        text=pivot_hm.values.astype(int),
+        texttemplate="%{text}",
+        textfont=dict(size=11, color="white"),
+        hovertemplate="<b>%{y}</b> · J%{x}<br>%{z} buts<extra></extra>",
+        showscale=False,
+    ))
+    fig_hm.update_xaxes(tickfont=dict(size=11))
+    fig_hm.update_yaxes(tickfont=dict(size=11))
+    st.plotly_chart(style_fig(fig_hm, max(360, 32*len(ordre))), use_container_width=True)
+    st.markdown("<p class='note'>Couleur = nombre de buts marqués ce match-là. "
+                "Plus rouge = plus de buts.</p>", unsafe_allow_html=True)
+
 # ============================================================================
 # PAGE — CLASSEMENT
 # ============================================================================
@@ -778,6 +827,56 @@ elif page == "Classement":
     st.markdown(head_html + rows_html + '</div>', unsafe_allow_html=True)
     st.markdown("<p class='note' style='margin-top:.5rem'>Forme sur les 5 derniers matchs</p>",
                 unsafe_allow_html=True)
+
+    # Séries en cours
+    st.markdown("### Séries en cours")
+    rows_ser = []
+    for eq in EQUIPES:
+        row = clt[clt["equipe"]==eq].iloc[0]
+        forme = row["forme"]
+        # Série actuelle (compter depuis la fin sans interruption)
+        serie_v=0; serie_inv=0; serie_d=0
+        for r in reversed(forme):
+            if r=="V": serie_v+=1
+            else: break
+        for r in reversed(forme):
+            if r in ("V","N"): serie_inv+=1
+            else: break
+        for r in reversed(forme):
+            if r=="D": serie_d+=1
+            else: break
+        rows_ser.append({"eq":eq,"serie_v":serie_v,"serie_inv":serie_inv,"serie_d":serie_d})
+    ser_df = pd.DataFrame(rows_ser)
+
+    cg_s, cd_s = st.columns(2)
+    with cg_s:
+        st.markdown("#### Sans défaite (matchs consécutifs)")
+        ser_inv = ser_df.sort_values("serie_inv",ascending=False)
+        fig_ser = go.Figure()
+        for _,r in ser_inv.iterrows():
+            if r["serie_inv"]==0: continue
+            coul_s = D1_VERT if r["serie_inv"]>=5 else(D1_OR if r["serie_inv"]>=3 else D1_BLANC)
+            fig_ser.add_trace(go.Bar(x=[r["serie_inv"]],y=[r["eq"]],orientation="h",
+                                     marker_color=COULEUR_EQUIPE.get(r["eq"],D1_ROUGE),
+                                     text=[f'{int(r["serie_inv"])} matchs'],
+                                     textposition="auto",textangle=0,showlegend=False))
+        fig_ser.update_yaxes(autorange="reversed")
+        st.plotly_chart(style_fig(fig_ser, max(220,28*len(ser_inv[ser_inv["serie_inv"]>0]))),
+                        use_container_width=True)
+    with cd_s:
+        st.markdown("#### Victoires consécutives")
+        ser_v = ser_df[ser_df["serie_v"]>0].sort_values("serie_v",ascending=False)
+        if len(ser_v):
+            fig_v = go.Figure()
+            for _,r in ser_v.iterrows():
+                fig_v.add_trace(go.Bar(x=[r["serie_v"]],y=[r["eq"]],orientation="h",
+                                       marker_color=COULEUR_EQUIPE.get(r["eq"],D1_ROUGE),
+                                       text=[f'{int(r["serie_v"])} victoires'],
+                                       textposition="auto",textangle=0,showlegend=False))
+            fig_v.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_v, max(220,28*len(ser_v))), use_container_width=True)
+        else:
+            st.info("Aucune équipe en série de victoires actuellement.")
 
     st.markdown("### Évolution des points (cumulés)")
     evo = evolution_classement()
@@ -1695,9 +1794,50 @@ elif page == "Analyse avancée":
                     "Solidité déf. = inversement proportionnelle aux buts encaissés/match.</p>",
                     unsafe_allow_html=True)
 
+    st.markdown("---")
 
-# ============================================================================
-# FONCTIONS D'ANALYSE TACTIQUE
+    # ---- HEATMAP MINUTE × ÉQUIPE ----
+    st.markdown("### Heatmap — quand chaque équipe marque (minutes)")
+    st.markdown("<p class='note'>Intensité = nombre de buts marqués à cette minute sur toute la saison. "
+                "Repère les équipes qui marquent tôt, tard, ou de façon régulière.</p>",
+                unsafe_allow_html=True)
+
+    eq_hm = st.multiselect("Équipes (laisser vide = toutes)", EQUIPES,
+                            default=[], key="hm_eq")
+    equipes_hm = eq_hm if eq_hm else EQUIPES
+
+    clt_hm = construire_classement()
+    ordre_hm = [e for e in clt_hm["equipe"].tolist() if e in equipes_hm]
+
+    pivot_hm2 = (df[df["equipe_marque"].isin(equipes_hm)]
+                 .groupby(["equipe_marque","minute"]).size()
+                 .reset_index(name="buts")
+                 .pivot(index="equipe_marque",columns="minute",values="buts")
+                 .reindex(ordre_hm)
+                 .reindex(columns=range(1,41), fill_value=0)
+                 .fillna(0))
+
+    fig_hm2 = go.Figure(go.Heatmap(
+        z=pivot_hm2.values,
+        x=[f"{m}'" for m in range(1,41)],
+        y=[e.split()[0] for e in pivot_hm2.index],
+        colorscale=[[0,"rgba(38,24,28,1)"],[0.4,"rgba(140,10,24,0.7)"],[1,D1_ROUGE]],
+        text=[[str(int(v)) if v>0 else "" for v in row] for row in pivot_hm2.values],
+        texttemplate="%{text}",
+        textfont=dict(size=10, color="white"),
+        hovertemplate="<b>%{y}</b> · %{x}<br>%{z} buts<extra></extra>",
+        showscale=True,
+        colorbar=dict(len=0.8, thickness=12, tickfont=dict(size=10))
+    ))
+    # Ligne mi-temps
+    fig_hm2.add_vline(x="20'", line_dash="dot", line_color=D1_GRIS, line_width=1.5,
+                      annotation_text="Mi-temps", annotation_font_color=D1_GRIS,
+                      annotation_position="top")
+    fig_hm2.update_xaxes(tickfont=dict(size=10),
+                          tickvals=[f"{m}'" for m in [1,5,10,15,20,25,30,35,40]])
+    fig_hm2.update_yaxes(tickfont=dict(size=11))
+    st.plotly_chart(style_fig(fig_hm2, max(300, 38*len(ordre_hm))),
+                    use_container_width=True)
 # ============================================================================
 
 def _get_matchs():
