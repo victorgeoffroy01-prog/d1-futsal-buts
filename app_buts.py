@@ -1640,54 +1640,115 @@ elif page == "Analyse avancée":
     eq_radar = st.multiselect("Équipes", EQUIPES, default=EQUIPES[:3], max_selections=4)
 
     if len(eq_radar) >= 2:
-        indicateurs = ["Buts/match","Efficacité P2 (%)","Buts en menant (%)","Collectif (nb buteurs)","Solidité déf."]
+        # Axes défendables : tous orientés "plus = mieux", comparables entre eux
+        indicateurs = [
+            "Volume offensif",      # buts/match → plus = mieux
+            "Solidité défensive",   # inverse buts encaissés/match → plus = mieux
+            "Résistance",           # % résultat positif quand mené → plus = mieux
+            "Régularité",           # inverse écart-type buts/match → plus = mieux
+            "Collectif",            # nb buteurs différents → plus = mieux (moins dépendant)
+        ]
 
         def radar_vals(eq):
             dp = df[df["equipe_marque"]==eq]
             dc = df[df["equipe_encaisse"]==eq]
-            meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-            nm = len(meq) or 1
-            bpm = len(dp)/nm
-            p2_eff = (dp["periode"]==2).mean()*100 if len(dp) else 0
-            men_pct = ((dp["situation"]=="Menant").sum()/len(dp)*100) if len(dp) else 0
-            nb_but = float(dp["joueur"].nunique())
-            solidite = max(0, 10 - len(dc)/nm)  # plus on encaisse peu, plus c'est élevé
-            return [bpm, p2_eff, men_pct, nb_but, solidite]
+            meq_r = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+            nm = len(meq_r) or 1
 
-        # Normaliser 0-100 pour le radar
+            # 1. Volume offensif : buts/match
+            vol_off = len(dp)/nm
+
+            # 2. Solidité défensive : buts encaissés/match inversé
+            # On stocke la valeur brute, l'inversion se fait après normalisation
+            enc_pm = len(dc)/nm
+
+            # 3. Résistance : parmi les matchs où l'équipe a été menée,
+            #    % avec résultat positif (V ou N). Calculé via retournements.
+            rs_r = analyser_retours_score(eq)
+            menes = rs_r["mv"] + rs_r["mn"] + rs_r["md"]
+            resistance = (rs_r["mv"]+rs_r["mn"])/menes*100 if menes > 0 else 50
+
+            # 4. Régularité : inverse de l'écart-type des buts/match
+            #    Plus l'écart-type est bas, plus la régularité est haute
+            bpm_list = []
+            for _, m in meq_r.iterrows():
+                dm2 = df[(df["journee"]==m["journee"])&
+                         (df["equipe_domicile"]==m["dom"])&
+                         (df["equipe_exterieure"]==m["ext"])]
+                bpm_list.append(int((dm2["equipe_marque"]==eq).sum()))
+            std = pd.Series(bpm_list).std(ddof=0) if len(bpm_list)>1 else 0
+            # On stocke std, l'inversion se fait après normalisation
+
+            # 5. Collectif : nb buteurs différents
+            collectif = float(dp["joueur"].nunique())
+
+            return [vol_off, enc_pm, resistance, std, collectif]
+
         all_vals = {eq: radar_vals(eq) for eq in eq_radar}
         all_matrix = pd.DataFrame(all_vals, index=indicateurs)
+
+        # Normalisation 0-100 avec inversion pour Solidité déf. et Régularité
+        axes_inverses = {"Solidité défensive", "Régularité"}
         norm = all_matrix.copy()
         for idx in indicateurs:
             mn = all_matrix.loc[idx].min(); mx = all_matrix.loc[idx].max()
             if mx != mn:
-                norm.loc[idx] = (all_matrix.loc[idx] - mn) / (mx - mn) * 100
+                vals_norm = (all_matrix.loc[idx] - mn) / (mx - mn) * 100
+                if idx in axes_inverses:
+                    vals_norm = 100 - vals_norm  # inverser : moins encaissé/irrégulier = plus haut
+                norm.loc[idx] = vals_norm
             else:
                 norm.loc[idx] = 50
 
         fig_radar = go.Figure()
         for eq in eq_radar:
             vals = norm[eq].tolist()
-            vals += [vals[0]]  # fermer le polygone
+            # Valeurs brutes pour le hover
+            raw = all_matrix[eq].tolist()
+            raw_labels = [
+                f"{raw[0]:.1f} buts/match",
+                f"{raw[1]:.1f} encaissés/match",
+                f"{raw[2]:.0f}% résultat positif quand mené",
+                f"écart-type {raw[3]:.1f}",
+                f"{int(raw[4])} buteurs différents",
+            ]
+            vals_closed = vals + [vals[0]]
             cats = indicateurs + [indicateurs[0]]
+            raw_closed = raw_labels + [raw_labels[0]]
             coul = COULEUR_EQUIPE.get(eq, D1_ROUGE)
             fig_radar.add_trace(go.Scatterpolar(
-                r=vals, theta=cats, name=eq.split()[0],
+                r=vals_closed, theta=cats, name=nc(eq),
                 line=dict(color=coul, width=2.5),
-                fill="toself", fillcolor=hex_to_rgba(coul, 0.12),
+                fill="toself", fillcolor=hex_to_rgba(coul, 0.15),
+                customdata=raw_closed,
+                hovertemplate="<b>%{theta}</b><br>%{customdata}<extra></extra>",
             ))
         fig_radar.update_layout(
             polar=dict(
                 bgcolor="rgba(0,0,0,0)",
                 radialaxis=dict(visible=True, range=[0,100],
-                                gridcolor="rgba(255,255,255,.1)", tickfont=dict(size=9)),
-                angularaxis=dict(gridcolor="rgba(255,255,255,.1)")
+                                gridcolor="rgba(255,255,255,.1)",
+                                tickfont=dict(size=9), ticksuffix=""),
+                angularaxis=dict(gridcolor="rgba(255,255,255,.1)",
+                                 tickfont=dict(size=13, color=D1_BLANC))
             )
         )
-        st.plotly_chart(style_fig(fig_radar, 460), use_container_width=True)
-        st.markdown("<p class='note'>Valeurs normalisées 0-100 entre les équipes sélectionnées. "
-                    "Solidité déf. = inversement proportionnelle aux buts encaissés/match.</p>",
-                    unsafe_allow_html=True)
+        st.plotly_chart(style_fig(fig_radar, 480), use_container_width=True)
+
+        # Légende des axes
+        st.markdown(
+            f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+            f'border-radius:10px;padding:.8rem 1.1rem;font-size:.8rem;color:{D1_GRIS}">'
+            f'<b style="color:{D1_BLANC}">Lecture du radar</b> — tous les axes sont orientés "plus = mieux" '
+            f'et normalisés 0-100 entre les équipes sélectionnées. Survole une trace pour les valeurs brutes.<br>'
+            f'<b>Volume offensif</b> = buts marqués/match · '
+            f'<b>Solidité défensive</b> = moins de buts encaissés/match · '
+            f'<b>Résistance</b> = % de résultats positifs (V ou N) quand l\'équipe est menée · '
+            f'<b>Régularité</b> = constance du volume de buts d\'un match à l\'autre · '
+            f'<b>Collectif</b> = nombre de buteurs différents utilisés'
+            f'</div>',
+            unsafe_allow_html=True
+        )
 
     st.markdown("---")
 
