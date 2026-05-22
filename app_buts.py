@@ -76,7 +76,8 @@ html,body,[class*="css"],.stMarkdown,.stMetric,button,input,select,textarea{{
     font-family:'Inter',-apple-system,sans-serif!important}}
 .block-container{{padding-top:1.1rem;padding-bottom:2rem;max-width:1400px}}
 h1{{color:{D1_BLANC}!important;border-bottom:2px solid {D1_ROUGE};
-    padding-bottom:.25rem;letter-spacing:-.3px;font-size:1.55rem!important;margin-bottom:.9rem!important}}
+    padding-bottom:.25rem;letter-spacing:-.3px;font-size:1.55rem!important;
+    margin-bottom:1.4rem!important}}
 h2,h3{{color:{D1_BLANC}!important;font-weight:600!important}}
 h3{{font-size:.98rem!important;margin-top:1rem!important;margin-bottom:.25rem!important;
     border-left:3px solid {D1_ROUGE};padding-left:.5rem}}
@@ -174,37 +175,36 @@ def hex_to_rgba(h, a=0.28):
 def style_fig(fig, h=320, titre=None):
     fig.update_layout(
         template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter", color=D1_BLANC, size=13), height=h,
+        font=dict(family="Inter", color=D1_BLANC, size=14), height=h,
         margin=dict(l=8, r=8, t=40 if titre else 16, b=8),
-        title=dict(text=titre or "", font=dict(size=14, color=D1_BLANC)),
-        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
-        uniformtext=dict(minsize=11, mode="hide"),
+        title=dict(text=titre or "", font=dict(size=15, color=D1_BLANC)),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=12)),
+        uniformtext=dict(minsize=12, mode="hide"),
     )
     fig.update_xaxes(gridcolor="rgba(255,255,255,.06)", zeroline=False,
-                     tickfont=dict(size=12))
+                     tickfont=dict(size=13, color=D1_BLANC))
     fig.update_yaxes(gridcolor="rgba(255,255,255,.06)", zeroline=False,
-                     tickfont=dict(size=12))
+                     tickfont=dict(size=13, color=D1_BLANC))
     return fig
 
 def barh_equipes(noms, vals, h=320, texte=None, opacite=1.0):
-    """Barres horizontales avec couleur propre à chaque équipe, chiffres lisibles."""
+    """Barres horizontales couleur équipe, noms courts sur l'axe."""
     fig = go.Figure()
     for nom, val in zip(noms, vals):
         coul = COULEUR_EQUIPE.get(nom, D1_ROUGE)
         if opacite < 1:
             coul = hex_to_rgba(coul, opacite)
         fig.add_trace(go.Bar(
-            x=[val], y=[nom], orientation="h",
+            x=[val], y=[nc(nom)], orientation="h",   # nom court sur axe
             marker_color=coul,
             text=[str(int(val))], textposition="outside",
-            textangle=0, textfont=dict(size=13, color=D1_BLANC),
+            textangle=0, textfont=dict(size=14, color=D1_BLANC),
             cliponaxis=False,
-            showlegend=False, name=nom,
+            showlegend=False, name=nc(nom),
         ))
     fig.update_yaxes(autorange="reversed")
-    # marge à droite pour les labels externes
     fig2 = style_fig(fig, h)
-    fig2.update_layout(margin=dict(l=8, r=40, t=16, b=8))
+    fig2.update_layout(margin=dict(l=8, r=44, t=16, b=8))
     fig2.update_xaxes(showticklabels=False)
     return fig2
 
@@ -241,6 +241,26 @@ JOURNEES  = sorted(df["journee"].dropna().unique().tolist())
 EQUIPES_AVEC_ORIGINE = sorted(
     df.loc[df["origine"].notna(), "equipe_marque"].dropna().unique().tolist()
 )
+
+# Noms courts pour graphes (quand la place manque)
+NOM_COURT = {
+    "ETOILE LAVALLOISE FC":  "LAVAL",
+    "UJS TOULOUSE":          "TOULOUSE",
+    "AS AVION FUTSAL":       "AVION",
+    "GOAL FUTSAL CLUB":      "GOAL",
+    "NANTES METROPOLE F.":   "NANTES",
+    "PARIS ACASA":           "ACASA",
+    "TOULON METROPOLE F.":   "TOULON",
+    "MONTPELLIER MED. F.":   "MONTPELLIER",
+    "SPORTING CLUB PARIS":   "PARIS",
+    "FC KINGERSHEIM":        "KINGERSHEIM",
+    "NICE FUTSAL CLUB":      "NICE",
+}
+def nc(eq):
+    """Nom court pour axes de graphes."""
+    return NOM_COURT.get(eq, eq.split()[0])
+def ncs(liste):
+    return [nc(e) for e in liste]
 
 # ============================================================================
 # FONCTIONS MÉTIER
@@ -337,6 +357,18 @@ with st.sidebar:
     st.caption(f"{len(df)} buts · {len(EQUIPES)} équipes · J{min(JOURNEES)}–J{max(JOURNEES)}")
 
 page = st.session_state.page
+
+# Mémoire de l'équipe sélectionnée entre pages
+if "equipe_sel" not in st.session_state:
+    st.session_state.equipe_sel = EQUIPES[0]
+
+def sel_equipe(label="Équipe", key=None):
+    """Selectbox équipe avec mémoire entre pages."""
+    idx = EQUIPES.index(st.session_state.equipe_sel) if st.session_state.equipe_sel in EQUIPES else 0
+    k = key or f"eq_{page.replace(' ','_').replace('/','_')}"
+    eq = st.selectbox(label, EQUIPES, index=idx, key=k)
+    st.session_state.equipe_sel = eq
+    return eq
 
 # ============================================================================
 # PDF
@@ -706,20 +738,32 @@ if page == "Accueil":
         ext_m = matchs_acc[matchs_acc["ext"]==eq]
         vd=int((dom_m["res_dom"]=="V").sum()); td=len(dom_m) or 1
         ve=int((ext_m["res_ext"]=="V").sum()); te=len(ext_m) or 1
-        rows_de.append({"eq":eq,"pct_dom":vd/td*100,"pct_ext":ve/te*100,"diff":vd/td*100-ve/te*100})
+        rows_de.append({"eq":eq,"pct_dom":vd/td*100,"pct_ext":ve/te*100})
     de_df = pd.DataFrame(rows_de).sort_values("pct_dom",ascending=False)
+
+    # 2 traces (dom + ext) avec noms courts sur l'axe X
     fig_de = go.Figure()
-    for _,r in de_df.iterrows():
-        coul = COULEUR_EQUIPE.get(r["eq"],D1_ROUGE)
-        fig_de.add_trace(go.Bar(name=r["eq"].split()[0]+" Dom",x=[r["eq"]],y=[r["pct_dom"]],
-                                marker_color=coul,showlegend=False,
-                                text=[f'{r["pct_dom"]:.0f}%'],textposition="outside",textangle=0))
-        fig_de.add_trace(go.Bar(name=r["eq"].split()[0]+" Ext",x=[r["eq"]],y=[r["pct_ext"]],
-                                marker_color=hex_to_rgba(coul,0.45),showlegend=False,
-                                text=[f'{r["pct_ext"]:.0f}%'],textposition="outside",textangle=0))
-    fig_de.update_layout(barmode="group")
-    fig_de.update_yaxes(showticklabels=False, range=[0,115])
-    st.plotly_chart(style_fig(fig_de, 320), use_container_width=True)
+    fig_de.add_trace(go.Bar(
+        name="Domicile",
+        x=ncs(de_df["eq"].tolist()),
+        y=de_df["pct_dom"].values,
+        marker_color=[COULEUR_EQUIPE.get(e, D1_ROUGE) for e in de_df["eq"]],
+        text=[f'{v:.0f}%' for v in de_df["pct_dom"]],
+        textposition="outside", textangle=0,
+        textfont=dict(size=14, color=D1_BLANC),
+    ))
+    fig_de.add_trace(go.Bar(
+        name="Extérieur",
+        x=ncs(de_df["eq"].tolist()),
+        y=de_df["pct_ext"].values,
+        marker_color=[hex_to_rgba(COULEUR_EQUIPE.get(e, D1_ROUGE), 0.5) for e in de_df["eq"]],
+        text=[f'{v:.0f}%' for v in de_df["pct_ext"]],
+        textposition="outside", textangle=0,
+        textfont=dict(size=14, color=D1_BLANC),
+    ))
+    fig_de.update_layout(barmode="group", bargap=0.2, bargroupgap=0.08)
+    fig_de.update_yaxes(showticklabels=False, range=[0,120])
+    st.plotly_chart(style_fig(fig_de, 340), use_container_width=True)
     st.markdown("<p class='note'>Barre pleine = domicile · Barre transparente = extérieur</p>",
                 unsafe_allow_html=True)
 
@@ -733,7 +777,7 @@ if page == "Accueil":
     fig_hm = go.Figure(go.Heatmap(
         z=pivot_hm.values,
         x=[f"J{j}" for j in pivot_hm.columns],
-        y=[e.split()[0] for e in pivot_hm.index],
+        y=[nc(e) for e in pivot_hm.index],
         colorscale=[[0,"rgba(38,24,28,1)"],[0.3,f"rgba(140,10,24,0.6)"],[1,D1_ROUGE]],
         text=pivot_hm.values.astype(int),
         texttemplate="%{text}",
@@ -755,9 +799,12 @@ elif page == "Classement":
 
     # Filtre journée
     j_max = max(JOURNEES)
-    j_filtre = st.slider("Classement après la journée", min_value=min(JOURNEES),
-                         max_value=j_max, value=j_max, step=1,
-                         format="J%d")
+    j_filtre = st.select_slider(
+        "Classement après la journée",
+        options=JOURNEES,
+        value=max(JOURNEES),
+        format_func=lambda x: f"J{x}"
+    )
     df_filtre = df[df["journee"] <= j_filtre]
 
     @st.cache_data
@@ -889,7 +936,7 @@ elif page == "Classement":
         coul = COULEUR_EQUIPE.get(eq, D1_ROUGE)
         fig.add_trace(go.Scatter(
             x=sub["journee"], y=sub["pts"], mode="lines+markers",
-            name=eq.split()[0], line=dict(color=coul, width=2.5), marker=dict(size=4),
+            name=nc(eq), line=dict(color=coul, width=2.5), marker=dict(size=4),
             hovertemplate=f"<b>{eq}</b><br>J%{{x}} → %{{y}} pts<extra></extra>"
         ))
     fig.update_xaxes(tickvals=journees_affichees, ticktext=[f"J{j}" for j in journees_affichees])
@@ -964,13 +1011,13 @@ elif page == "Fiche match":
         x=xs, y=yd, mode="lines", name=dom.split()[0],
         line=dict(color=coul_dom, width=3),
         fill="tozeroy", fillcolor=hex_to_rgba(coul_dom, 0.22),
-        hovertemplate=f"<b>{dom.split()[0]}</b> %{{y}}<extra></extra>"
+        hovertemplate=f"<b>{nc(dom)}</b> %{{y}}<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
         x=xs, y=ye, mode="lines", name=ext.split()[0],
         line=dict(color=coul_ext, width=3),
         fill="tozeroy", fillcolor=hex_to_rgba(coul_ext, 0.22),
-        hovertemplate=f"<b>{ext.split()[0]}</b> %{{y}}<extra></extra>"
+        hovertemplate=f"<b>{nc(ext)}</b> %{{y}}<extra></extra>"
     ))
     # Mi-temps à la minute 20 (numérique)
     fig.add_shape(type="line", x0=20, x1=20, y0=0, y1=1, yref="paper",
@@ -1117,22 +1164,38 @@ elif page == "Buteurs":
             int((dj["situation"]=="Égalité").sum()),
             int((dj["situation"]=="Mené").sum()),
         ]
-        max_v = max(vals_raw) or 1
-        vals_norm = [v/max_v*100 for v in vals_raw]
+        total_vals = sum(vals_raw) or 1
+        # Normaliser en % du total (pas sur le max) pour mieux voir les proportions
+        vals_pct = [v/total_vals*100 for v in vals_raw]
         fig_radar = go.Figure(go.Scatterpolar(
-            r=vals_norm+[vals_norm[0]], theta=axes_radar+[axes_radar[0]],
-            fill="toself", fillcolor=hex_to_rgba(coul_j, 0.2),
-            line=dict(color=coul_j, width=2.5), name=j,
+            r=vals_pct+[vals_pct[0]],
+            theta=axes_radar+[axes_radar[0]],
+            fill="toself",
+            fillcolor=hex_to_rgba(coul_j, 0.35),
+            line=dict(color=coul_j, width=3),
+            name=j,
+            mode="lines+markers+text",
+            marker=dict(size=8, color=coul_j),
             customdata=vals_raw+[vals_raw[0]],
-            hovertemplate="%{theta}: %{customdata}<extra></extra>"
+            hovertemplate="<b>%{theta}</b><br>%{customdata} buts (%{r:.0f}%)<extra></extra>",
+            texttemplate="%{customdata}",
+            textposition="top center",
+            textfont=dict(size=13, color=D1_BLANC),
         ))
-        fig_radar.update_layout(polar=dict(
-            bgcolor="rgba(0,0,0,0)",
-            radialaxis=dict(visible=True, range=[0,100],
-                            gridcolor="rgba(255,255,255,.1)", tickfont=dict(size=8)),
-            angularaxis=dict(gridcolor="rgba(255,255,255,.1)")
-        ))
-        st.plotly_chart(style_fig(fig_radar, 300), use_container_width=True)
+        fig_radar.update_layout(
+            polar=dict(
+                bgcolor="rgba(0,0,0,0)",
+                radialaxis=dict(visible=True, range=[0,60],
+                                gridcolor="rgba(255,255,255,.15)",
+                                tickfont=dict(size=10, color=D1_GRIS),
+                                ticksuffix="%"),
+                angularaxis=dict(gridcolor="rgba(255,255,255,.15)",
+                                 tickfont=dict(size=13, color=D1_BLANC))
+            )
+        )
+        st.plotly_chart(style_fig(fig_radar, 320), use_container_width=True)
+        st.markdown("<p class='note'>Valeurs en % du total de buts du joueur. "
+                    "Les chiffres = nombre de buts.</p>", unsafe_allow_html=True)
     with cd2:
         st.markdown("### Comparateur multi-buteurs")
         top_list = clt["joueur"].head(20).tolist()
@@ -1266,7 +1329,7 @@ elif page == "Dynamique de score":
 # ============================================================================
 elif page == "Vue équipe":
     st.title("Fiche équipe")
-    eq=st.selectbox("Équipe",EQUIPES)
+    eq=sel_equipe(key="eq_vue_equipe")
     clt=construire_classement(); rang_row=clt[clt["equipe"]==eq].iloc[0]
     rang=clt[clt["equipe"]==eq].index[0]+1
     coul=COULEUR_EQUIPE.get(eq,D1_ROUGE); lg=logo_b64(eq,48)
@@ -1820,7 +1883,7 @@ elif page == "Analyse avancée":
     fig_hm2 = go.Figure(go.Heatmap(
         z=pivot_hm2.values,
         x=[f"{m}'" for m in range(1,41)],
-        y=[e.split()[0] for e in pivot_hm2.index],
+        y=[nc(e) for e in pivot_hm2.index],
         colorscale=[[0,"rgba(38,24,28,1)"],[0.4,"rgba(140,10,24,0.7)"],[1,D1_ROUGE]],
         text=[[str(int(v)) if v>0 else "" for v in row] for row in pivot_hm2.values],
         texttemplate="%{text}",
@@ -1927,13 +1990,13 @@ def _carte_stat(titre, valeur_principale, sous_texte=None, couleur=None):
     c = couleur or D1_ROUGE
     html = (
         f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
-        f'border-top:3px solid {c};border-radius:12px;padding:1rem 1.2rem;height:100%">'
+        f'border-top:4px solid {c};border-radius:12px;padding:1.2rem 1.3rem;height:100%;min-height:110px">'
         f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
         f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.5rem">{titre}</div>'
-        f'<div style="font-size:2rem;font-weight:900;color:{c};line-height:1">{valeur_principale}</div>'
+        f'<div style="font-size:2.4rem;font-weight:900;color:{c};line-height:1.1">{valeur_principale}</div>'
     )
     if sous_texte:
-        html += f'<div style="font-size:.8rem;color:{D1_GRIS};margin-top:.3rem">{sous_texte}</div>'
+        html += f'<div style="font-size:.85rem;color:{D1_GRIS};margin-top:.4rem;font-weight:500">{sous_texte}</div>'
     html += '</div>'
     return html
 
@@ -2198,7 +2261,7 @@ def pdf_rapport_complet(eq):
 # ============================================================================
 if page == "Analyse Tactique":
     st.title("Analyse Tactique")
-    eq = st.selectbox("Équipe", EQUIPES)
+    eq = sel_equipe(key="eq_tactique")
     coul = COULEUR_EQUIPE.get(eq, D1_ROUGE)
     clt  = construire_classement()
     rang_row = clt[clt["equipe"]==eq].iloc[0]
@@ -2236,10 +2299,12 @@ if page == "Analyse Tactique":
         # Sous-titre contextuel
         if m_win > e_win:
             diff = m_win - e_win
-            msg = f"L'équipe est <b>{diff:.0f}%</b> plus performante quand elle marque le premier but"
+            msg = f"<b style='color:{D1_BLANC}'>{diff:.0f}%</b> de plus en marquant le premier but"
         else:
-            msg = "L'équipe reste performante même en encaissant le premier but"
-        st.markdown(f'<p style="color:{D1_GRIS};font-size:.82rem;margin-bottom:.6rem">{msg}</p>',
+            msg = "Reste performante même en encaissant le premier but"
+        st.markdown(f'<div style="background:{D1_CARTE};border-left:3px solid {coul};'
+                    f'border-radius:8px;padding:.5rem .8rem;margin-bottom:.7rem;'
+                    f'font-size:.84rem;color:{D1_GRIS}">{msg}</div>',
                     unsafe_allow_html=True)
         ca, cb = st.columns(2)
         ca.markdown(_carte_stat(
@@ -2273,17 +2338,21 @@ if page == "Analyse Tactique":
             f"{ve}V · {ne}N · {de_}D",
             coul
         ), unsafe_allow_html=True)
+        st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
 
-        # mini graphe dom vs ext
-        fig_de = go.Figure(go.Bar(
+        # graphe dom vs ext clair
+        fig_de_tac = go.Figure(go.Bar(
             x=["Domicile","Extérieur"],
             y=[vd/td*100, ve/te*100],
-            marker_color=[coul, hex_to_rgba(coul, 0.6)],
+            marker_color=[coul, hex_to_rgba(coul, 0.55)],
             text=[f"{vd/td*100:.0f}%", f"{ve/te*100:.0f}%"],
-            textposition="outside", textangle=0
+            textposition="outside", textangle=0,
+            textfont=dict(size=16, color=D1_BLANC, family="Inter"),
+            width=[0.5, 0.5],
         ))
-        fig_de.update_yaxes(showticklabels=False, range=[0,110])
-        st.plotly_chart(style_fig(fig_de, 200), use_container_width=True)
+        fig_de_tac.update_yaxes(showticklabels=False, range=[0,115])
+        fig_de_tac.update_xaxes(tickfont=dict(size=14, color=D1_BLANC))
+        st.plotly_chart(style_fig(fig_de_tac, 210), use_container_width=True)
 
     st.markdown("---")
 
@@ -2373,7 +2442,7 @@ elif page == "Rapport équipe":
                 "5 sections : vue d'ensemble, analyse tactique, profil temporel, "
                 "buteurs, origines.</p>", unsafe_allow_html=True)
 
-    eq = st.selectbox("Équipe à analyser", EQUIPES)
+    eq = sel_equipe(key="eq_rapport")
     coul = COULEUR_EQUIPE.get(eq, D1_ROUGE)
     lg   = logo_b64(eq, 52)
     clt  = construire_classement()
