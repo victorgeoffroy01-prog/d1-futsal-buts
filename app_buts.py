@@ -18,9 +18,12 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage,
+    HRFlowable, KeepTogether
 )
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.graphics.shapes import Drawing, Rect
+from reportlab.graphics import renderPDF
 
 # ============================================================================
 # CONFIG & CHARTE
@@ -298,6 +301,7 @@ with st.sidebar:
         "📊 Dynamique de score","🛡 Vue équipe",
         "🎯 Tactique / Origines","⚔ Confrontations",
         "🔭 Scouting adverse","📈 Analyse avancée",
+        "📄 Exports PDF",
     ], label_visibility="collapsed")
     page = page.split(" ",1)[-1].strip()
     st.markdown("---")
@@ -331,6 +335,264 @@ def pdf_tableau(titre, sous_titre, df_tab, note=None):
     ]))
     elems.append(t)
     if note: elems.append(Paragraph(note,nt))
+    doc.build(elems); buf.seek(0)
+    return buf
+
+
+# ---- Helpers PDF visuels ----
+def _pdf_header(elems, styles, titre, sous_titre):
+    rouge = colors.HexColor(D1_ROUGE)
+    h   = ParagraphStyle("h2",parent=styles["Title"],textColor=rouge,fontSize=16,alignment=TA_CENTER,spaceAfter=3)
+    sub = ParagraphStyle("s2",parent=styles["Normal"],textColor=colors.grey,fontSize=9,alignment=TA_CENTER,spaceAfter=10)
+    if LOGO_D1.exists():
+        try:
+            img=RLImage(str(LOGO_D1),width=1.8*cm,height=1.9*cm); img.hAlign="CENTER"; elems+=[img,Spacer(1,4)]
+        except Exception: pass
+    elems += [Paragraph(titre,h), Paragraph(sous_titre,sub),
+              HRFlowable(width="100%",thickness=1.5,color=rouge,spaceAfter=8)]
+
+def _pdf_stat_row(label, valeur, couleur_hex=None):
+    """Ligne label + valeur avec couleur optionnelle."""
+    rouge = colors.HexColor(couleur_hex or D1_ROUGE)
+    data  = [[label, str(valeur)]]
+    t = Table(data, colWidths=[12*cm, 5*cm])
+    t.setStyle(TableStyle([
+        ("FONTNAME",(0,0),(0,0),"Helvetica"),("FONTSIZE",(0,0),(-1,-1),9),
+        ("TEXTCOLOR",(1,0),(1,0),rouge),("FONTNAME",(1,0),(1,0),"Helvetica-Bold"),
+        ("ALIGN",(1,0),(1,0),"RIGHT"),("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2),
+        ("LINEBELOW",(0,0),(-1,0),0.3,colors.HexColor("#E0D0D3")),
+    ]))
+    return t
+
+def _pdf_barre(val, max_val, width_cm=14, height=10, couleur_hex=D1_ROUGE):
+    w = width_cm*cm
+    d = Drawing(w, height+2)
+    d.add(Rect(0,0,w,height,fillColor=colors.HexColor("#F0E8EA"),strokeColor=None))
+    if max_val>0:
+        fw = val/max_val*w
+        d.add(Rect(0,0,fw,height,fillColor=colors.HexColor(couleur_hex),strokeColor=None))
+    return d
+
+def _pdf_section(titre, styles):
+    rouge = colors.HexColor(D1_ROUGE)
+    s = ParagraphStyle("sec",parent=styles["Normal"],textColor=rouge,
+                       fontSize=11,fontName="Helvetica-Bold",spaceBefore=10,spaceAfter=4)
+    return Paragraph(titre, s)
+
+
+def pdf_scouting(eq):
+    """PDF scouting complet d'une équipe."""
+    buf  = BytesIO()
+    doc  = SimpleDocTemplate(buf,pagesize=A4,topMargin=1.2*cm,bottomMargin=1.5*cm,
+                              leftMargin=1.8*cm,rightMargin=1.8*cm)
+    stl  = getSampleStyleSheet()
+    elems= []
+    clt  = construire_classement()
+    matchs = construire_matchs()
+    rang_row = clt[clt["equipe"]==eq].iloc[0]
+    rang     = clt[clt["equipe"]==eq].index[0]+1
+    dpour    = df[df["equipe_marque"]==eq]
+    dcontre  = df[df["equipe_encaisse"]==eq]
+    meq      = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    n_m      = len(meq) or 1
+    coul_hex = COULEUR_EQUIPE.get(eq, D1_ROUGE)
+
+    _pdf_header(elems, stl, f"Fiche Scouting — {eq}", f"D1 Futsal · Saison en cours · Journée {max(JOURNEES)}")
+
+    # Classement
+    elems.append(_pdf_section("📊 Position au classement", stl))
+    elems.append(_pdf_stat_row("Rang", f"{rang}e", coul_hex))
+    elems.append(_pdf_stat_row("Points", int(rang_row["Pts"]), coul_hex))
+    elems.append(_pdf_stat_row("Bilan", f"{int(rang_row['V'])}V  {int(rang_row['N'])}N  {int(rang_row['D'])}D"))
+    elems.append(_pdf_stat_row("Buts marqués / encaissés", f"{int(rang_row['BP'])} / {int(rang_row['BC'])}"))
+    elems.append(_pdf_stat_row("Différentiel", f"{int(rang_row['Diff']):+d}"))
+    elems.append(_pdf_stat_row("Buts/match (att.)", f"{len(dpour)/n_m:.1f}"))
+    elems.append(_pdf_stat_row("Buts/match (déf.)", f"{len(dcontre)/n_m:.1f}"))
+    elems.append(Spacer(1,8))
+
+    # Top buteurs
+    elems.append(_pdf_section("⚽ Buteurs dangereux", stl))
+    bb = dpour["joueur"].value_counts().head(8)
+    max_b = bb.max() if len(bb) else 1
+    np_stl = ParagraphStyle("np",parent=stl["Normal"],fontSize=8.5,spaceBefore=1,spaceAfter=1)
+    for joueur, nb in bb.items():
+        elems.append(Paragraph(f"{joueur}  ({nb} buts, {nb/len(dpour)*100:.0f}%)", np_stl))
+        elems.append(_pdf_barre(nb, max_b, couleur_hex=coul_hex))
+    elems.append(Spacer(1,8))
+
+    # Profil temporel offensif
+    elems.append(_pdf_section("⏱ Profil temporel offensif", stl))
+    mins_p = dpour["minute"].dropna().astype(int)
+    tr_p   = pd.cut(mins_p,bins=range(0,41,5),
+                    labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
+    max_tr = tr_p.max() if tr_p.max()>0 else 1
+    for tr, v in tr_p.items():
+        elems.append(Paragraph(f"{tr}  ({int(v)} buts)", np_stl))
+        elems.append(_pdf_barre(int(v), int(max_tr), couleur_hex=coul_hex))
+    elems.append(Spacer(1,8))
+
+    # Profil défensif
+    elems.append(_pdf_section("🛡 Profil défensif — tranches à risque", stl))
+    mins_c = dcontre["minute"].dropna().astype(int)
+    tr_c   = pd.cut(mins_c,bins=range(0,41,5),
+                    labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
+    max_tc = tr_c.max() if tr_c.max()>0 else 1
+    best_tr = tr_c.idxmax()
+    for tr, v in tr_c.items():
+        rouge_flag = " ← TRANCHE VULNÉRABLE" if tr==best_tr else ""
+        elems.append(Paragraph(f"{tr}  ({int(v)} buts encaissés){rouge_flag}", np_stl))
+        c_bar = D1_ROUGE if tr==best_tr else "#9A8E91"
+        elems.append(_pdf_barre(int(v), int(max_tc), couleur_hex=c_bar))
+    elems.append(Spacer(1,8))
+
+    # Situation offensive / défensive
+    elems.append(_pdf_section("📈 Dynamique de score", stl))
+    sit_p = dpour[dpour["situation"].notna()]["situation"].value_counts()
+    sit_c = dcontre[dcontre["situation"].notna()]["situation"].value_counts()
+    data_sit = [["", "Offensive (buts marqués)", "Défensive (buts encaissés)"]]
+    for s in ["Menant","Égalité","Mené"]:
+        vo = int(sit_p.get(s,0)); vc = int(sit_c.get(s,0))
+        tp = sit_p.sum() or 1; tc = sit_c.sum() or 1
+        data_sit.append([s, f"{vo} ({vo/tp*100:.0f}%)", f"{vc} ({vc/tc*100:.0f}%)"])
+    t_sit = Table(data_sit, colWidths=[4.5*cm,7*cm,7*cm])
+    t_sit.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),colors.HexColor(D1_ROUGE)),
+        ("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+        ("FONTSIZE",(0,0),(-1,-1),8.5),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4ECEE")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+    ]))
+    elems.append(t_sit)
+    doc.build(elems); buf.seek(0)
+    return buf
+
+
+def pdf_buteur(joueur_nom):
+    """PDF fiche buteur enrichie."""
+    buf  = BytesIO()
+    doc  = SimpleDocTemplate(buf,pagesize=A4,topMargin=1.2*cm,bottomMargin=1.5*cm,
+                              leftMargin=1.8*cm,rightMargin=1.8*cm)
+    stl  = getSampleStyleSheet()
+    elems= []
+    dj   = df[df["joueur"]==joueur_nom]
+    if len(dj)==0:
+        return buf
+    eq_j     = dj["equipe_marque"].mode().iloc[0]
+    coul_hex = COULEUR_EQUIPE.get(eq_j, D1_ROUGE)
+    np_stl   = ParagraphStyle("np",parent=stl["Normal"],fontSize=8.5,spaceBefore=1,spaceAfter=1)
+
+    _pdf_header(elems, stl, f"Fiche Buteur — {joueur_nom}", f"{eq_j} · D1 Futsal · {len(dj)} buts")
+
+    # Stats générales
+    elems.append(_pdf_section("📊 Statistiques", stl))
+    elems.append(_pdf_stat_row("Buts total", len(dj), coul_hex))
+    elems.append(_pdf_stat_row("Buts en 1re période", int((dj["periode"]==1).sum())))
+    elems.append(_pdf_stat_row("Buts en 2e période", int((dj["periode"]==2).sum())))
+    elems.append(_pdf_stat_row("Journées avec but", dj["journee"].nunique()))
+    elems.append(_pdf_stat_row("Adversaires différents scorés", dj["equipe_encaisse"].nunique()))
+    elems.append(Spacer(1,8))
+
+    # Situation au moment des buts
+    elems.append(_pdf_section("📈 Situation au moment des buts", stl))
+    sit = dj["situation"].value_counts()
+    tot_s = sit.sum() or 1
+    for s, v in sit.items():
+        elems.append(Paragraph(f"{s}  ({int(v)} buts, {v/tot_s*100:.0f}%)", np_stl))
+        c_b = D1_VERT if s=="Menant" else(D1_OR if s=="Égalité" else D1_ROUGE)
+        elems.append(_pdf_barre(int(v), int(sit.max()), couleur_hex=c_b))
+    elems.append(Spacer(1,8))
+
+    # Progression (tableau journée par journée)
+    elems.append(_pdf_section("📅 Progression sur la saison", stl))
+    prog = dj.groupby("journee").size().reindex(range(1,max(JOURNEES)+1),fill_value=0)
+    cumul = prog.cumsum()
+    data_prog = [["Journée","Buts","Total cumulé"]]
+    for j_, (nb, tot) in enumerate(zip(prog.values, cumul.values), 1):
+        if nb > 0:
+            data_prog.append([f"J{j_}", int(nb), int(tot)])
+    if len(data_prog)>1:
+        t_prog = Table(data_prog, colWidths=[4*cm,5.5*cm,5.5*cm])
+        t_prog.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),colors.HexColor(D1_ROUGE)),
+            ("TEXTCOLOR",(0,0),(-1,0),colors.white),
+            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+            ("FONTSIZE",(0,0),(-1,-1),8.5),
+            ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4ECEE")]),
+            ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+            ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+            ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ]))
+        elems.append(t_prog)
+    elems.append(Spacer(1,8))
+
+    # Adversaires favoris
+    elems.append(_pdf_section("🎯 Adversaires favoris", stl))
+    adv = dj["equipe_encaisse"].value_counts().head(6)
+    for eq_, n_ in adv.items():
+        elems.append(Paragraph(f"{eq_}  ({int(n_)} buts)", np_stl))
+        elems.append(_pdf_barre(int(n_), int(adv.max()), couleur_hex=COULEUR_EQUIPE.get(eq_, D1_ROUGE)))
+
+    doc.build(elems); buf.seek(0)
+    return buf
+
+
+def pdf_match(journee, dom, ext):
+    """PDF fiche match avec chronologie."""
+    buf  = BytesIO()
+    doc  = SimpleDocTemplate(buf,pagesize=A4,topMargin=1.2*cm,bottomMargin=1.5*cm,
+                              leftMargin=1.8*cm,rightMargin=1.8*cm)
+    stl  = getSampleStyleSheet()
+    elems= []
+    df_m = df[(df["journee"]==journee)&(df["equipe_domicile"]==dom)&(df["equipe_exterieure"]==ext)]
+    events = reconstruire_score(df_m, dom, ext)
+    bd   = int((df_m["equipe_marque"]==dom).sum())
+    be   = int((df_m["equipe_marque"]==ext).sum())
+    coul_dom = COULEUR_EQUIPE.get(dom, D1_ROUGE)
+    coul_ext = COULEUR_EQUIPE.get(ext, D1_BLEU)
+    np_stl = ParagraphStyle("np",parent=stl["Normal"],fontSize=8.5,spaceBefore=2,spaceAfter=2)
+
+    _pdf_header(elems, stl, f"{dom}  {bd} — {be}  {ext}", f"D1 Futsal · Journée {journee}")
+
+    # Stats
+    elems.append(_pdf_section("📊 Stats du match", stl))
+    elems.append(_pdf_stat_row("Buts 1re période", int((df_m["periode"]==1).sum())))
+    elems.append(_pdf_stat_row("Buts 2e période", int((df_m["periode"]==2).sum())))
+    buts_dom_df = df_m[df_m["equipe_marque"]==dom]
+    buts_ext_df = df_m[df_m["equipe_marque"]==ext]
+    elems.append(_pdf_stat_row(f"Buteurs {dom.split()[0]}", buts_dom_df["joueur"].nunique()))
+    elems.append(_pdf_stat_row(f"Buteurs {ext.split()[0]}", buts_ext_df["joueur"].nunique()))
+    elems.append(Spacer(1,8))
+
+    # Chronologie
+    elems.append(_pdf_section("⏱ Chronologie des buts", stl))
+    data_chr = [["Per.", "Min", "Buteur", "Équipe", "Score"]]
+    for e in events:
+        data_chr.append([
+            f"P{e['periode']}", f"{e['minute']}'", e["joueur"],
+            e["equipe"].split()[0], f"{e['score_dom']}—{e['score_ext']}"
+        ])
+    t_chr = Table(data_chr, colWidths=[1.5*cm,1.5*cm,5.5*cm,4.5*cm,2.5*cm])
+    coul_rows = []
+    for i, e in enumerate(events, 1):
+        c = colors.HexColor(coul_dom) if e["equipe"]==dom else colors.HexColor(coul_ext)
+        coul_rows.append(("TEXTCOLOR",(3,i),(3,i),c))
+        coul_rows.append(("FONTNAME",(4,i),(4,i),"Helvetica-Bold"))
+    t_chr.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),colors.HexColor(D1_ROUGE)),
+        ("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+        ("FONTSIZE",(0,0),(-1,-1),8.5),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4ECEE")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ALIGN",(0,0),(1,-1),"CENTER"),("ALIGN",(4,0),(4,-1),"CENTER"),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+    ]+coul_rows))
+    elems.append(t_chr)
+
     doc.build(elems); buf.seek(0)
     return buf
 
@@ -615,17 +877,108 @@ elif page == "Classement buteurs":
         st.warning("Aucun joueur trouvé.")
         st.stop()
     j = st.selectbox("Résultats", liste_joueurs, label_visibility="collapsed")
-    dj=df[df["joueur"]==j]
-    a,b,c,d2=st.columns(4)
-    a.metric("Buts",len(dj)); b.metric("1re période",int((dj["periode"]==1).sum()))
-    c.metric("2e période",int((dj["periode"]==2).sum())); d2.metric("Adversaires",dj["equipe_encaisse"].nunique())
-    sit=dj["situation"].value_counts()
-    if not sit.empty:
-        fig=go.Figure(go.Bar(x=sit.index,y=sit.values,textangle=0,
-                             marker_color=[D1_VERT if s=="Menant" else(D1_OR if s=="Égalité" else D1_ROUGE) for s in sit.index],
-                             text=sit.values,textposition="outside"))
-        fig.update_yaxes(showticklabels=False)
-        st.plotly_chart(style_fig(fig,230,"Situation au moment des buts"),use_container_width=True)
+
+    dj = df[df["joueur"]==j]
+    eq_j = dj["equipe_marque"].mode().iloc[0]
+    coul_j = COULEUR_EQUIPE.get(eq_j, D1_ROUGE)
+    lg_j = logo_b64(eq_j, 32)
+
+    st.markdown(
+        f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+        f'border-left:4px solid {coul_j};border-radius:11px;padding:.8rem 1rem;'
+        f'display:flex;align-items:center;gap:.8rem;margin:.4rem 0 .8rem 0">'
+        f'{lg_j}'
+        f'<div><div style="font-size:1rem;font-weight:800">{j}</div>'
+        f'<div style="color:{D1_GRIS};font-size:.78rem">{eq_j}</div></div>'
+        f'<div style="margin-left:auto;font-size:1.6rem;font-weight:900;color:{coul_j}">{len(dj)} buts</div>'
+        f'</div>', unsafe_allow_html=True
+    )
+
+    a,b,c,d2 = st.columns(4)
+    a.metric("Buts", len(dj))
+    b.metric("1re période", int((dj["periode"]==1).sum()))
+    c.metric("2e période", int((dj["periode"]==2).sum()))
+    d2.metric("Adversaires différents", dj["equipe_encaisse"].nunique())
+
+    cg, cd = st.columns(2)
+    with cg:
+        st.markdown("### Progression sur la saison")
+        prog = dj.groupby("journee").size().reindex(JOURNEES, fill_value=0).cumsum()
+        fig_prog = go.Figure(go.Scatter(
+            x=[f"J{j_}" for j_ in prog.index], y=prog.values,
+            mode="lines+markers", name=j,
+            line=dict(color=coul_j, width=3),
+            fill="tozeroy", fillcolor=hex_to_rgba(coul_j, 0.18),
+            marker=dict(size=5),
+        ))
+        fig_prog.update_yaxes(dtick=5)
+        st.plotly_chart(style_fig(fig_prog, 250), use_container_width=True)
+    with cd:
+        st.markdown("### Adversaires favoris")
+        adv = dj["equipe_encaisse"].value_counts().head(6)
+        fig_adv = go.Figure()
+        for eq_, n_ in adv.items():
+            c_ = COULEUR_EQUIPE.get(eq_, D1_ROUGE)
+            fig_adv.add_trace(go.Bar(x=[n_], y=[eq_], orientation="h",
+                                     marker_color=c_, text=[n_],
+                                     textposition="auto", textangle=0, showlegend=False))
+        fig_adv.update_yaxes(autorange="reversed")
+        st.plotly_chart(style_fig(fig_adv, 250), use_container_width=True)
+
+    axes_radar = ["Buts P1","Buts P2","En menant","À égalité","En mené"]
+    cg2, cd2 = st.columns(2)
+    with cg2:
+        st.markdown("### Radar — profil de buteur")
+        vals_raw = [
+            int((dj["periode"]==1).sum()), int((dj["periode"]==2).sum()),
+            int((dj["situation"]=="Menant").sum()),
+            int((dj["situation"]=="Égalité").sum()),
+            int((dj["situation"]=="Mené").sum()),
+        ]
+        max_v = max(vals_raw) or 1
+        vals_norm = [v/max_v*100 for v in vals_raw]
+        fig_radar = go.Figure(go.Scatterpolar(
+            r=vals_norm+[vals_norm[0]], theta=axes_radar+[axes_radar[0]],
+            fill="toself", fillcolor=hex_to_rgba(coul_j, 0.2),
+            line=dict(color=coul_j, width=2.5), name=j,
+            customdata=vals_raw+[vals_raw[0]],
+            hovertemplate="%{theta}: %{customdata}<extra></extra>"
+        ))
+        fig_radar.update_layout(polar=dict(
+            bgcolor="rgba(0,0,0,0)",
+            radialaxis=dict(visible=True, range=[0,100],
+                            gridcolor="rgba(255,255,255,.1)", tickfont=dict(size=8)),
+            angularaxis=dict(gridcolor="rgba(255,255,255,.1)")
+        ))
+        st.plotly_chart(style_fig(fig_radar, 300), use_container_width=True)
+    with cd2:
+        st.markdown("### Comparateur multi-buteurs")
+        top_list = clt["joueur"].head(20).tolist()
+        comp_sel = st.multiselect("Comparer avec",
+                                  [x for x in top_list if x != j],
+                                  default=top_list[1:3] if len(top_list)>2 else [],
+                                  max_selections=3)
+        fig_comp = go.Figure()
+        for bu in [j]+comp_sel:
+            dbu = df[df["joueur"]==bu]; eq_bu = dbu["equipe_marque"].mode().iloc[0] if len(dbu) else EQUIPES[0]
+            coul_bu = COULEUR_EQUIPE.get(eq_bu, D1_ROUGE); tot_bu = len(dbu) or 1
+            vr = [int((dbu["periode"]==1).sum())/tot_bu*100, int((dbu["periode"]==2).sum())/tot_bu*100,
+                  int((dbu["situation"]=="Menant").sum())/tot_bu*100,
+                  int((dbu["situation"]=="Égalité").sum())/tot_bu*100,
+                  int((dbu["situation"]=="Mené").sum())/tot_bu*100]
+            fig_comp.add_trace(go.Scatterpolar(
+                r=vr+[vr[0]], theta=axes_radar+[axes_radar[0]],
+                fill="toself", fillcolor=hex_to_rgba(coul_bu, 0.12),
+                line=dict(color=coul_bu, width=2), name=bu.split()[0]
+            ))
+        fig_comp.update_layout(polar=dict(
+            bgcolor="rgba(0,0,0,0)",
+            radialaxis=dict(visible=True, range=[0,100],
+                            gridcolor="rgba(255,255,255,.1)", tickfont=dict(size=8)),
+            angularaxis=dict(gridcolor="rgba(255,255,255,.1)")
+        ))
+        st.plotly_chart(style_fig(fig_comp, 300), use_container_width=True)
+        st.markdown("<p class='note'>Valeurs en % du total de buts du joueur.</p>", unsafe_allow_html=True)
 
 # ============================================================================
 # PAGE — PROFIL TEMPOREL
@@ -1228,3 +1581,145 @@ elif page == "Analyse avancée":
         st.markdown("<p class='note'>Valeurs normalisées 0-100 entre les équipes sélectionnées. "
                     "Solidité déf. = inversement proportionnelle aux buts encaissés/match.</p>",
                     unsafe_allow_html=True)
+
+# ============================================================================
+# PAGE — EXPORTS PDF
+# ============================================================================
+elif page == "Exports PDF":
+    st.title("Exports PDF")
+    st.markdown("<p class='note'>Génère des fiches PDF prêtes à imprimer ou partager.</p>",
+                unsafe_allow_html=True)
+
+    ong_cls, ong_sco, ong_but, ong_match = st.tabs([
+        "🏆 Classement", "🔭 Scouting", "👟 Fiche buteur", "⚽ Fiche match"
+    ])
+
+    # ---- CLASSEMENT ----
+    with ong_cls:
+        st.markdown("### Classement D1 Futsal")
+        clt = construire_classement()
+        tab_exp = clt[["equipe","J","V","N","D","Pts","BP","BC","Diff"]].copy()
+        tab_exp.columns = ["Équipe","J","V","N","D","Pts","BP","BC","Diff"]
+        c1,c2 = st.columns(2)
+        with c1:
+            st.metric("Journée couverte", f"J{max(JOURNEES)}")
+        with c2:
+            st.metric("Équipes", len(clt))
+        st.dataframe(tab_exp.set_index("Équipe"), use_container_width=True, height=360)
+        st.download_button(
+            "⬇ Télécharger le PDF Classement",
+            pdf_tableau("Classement D1 Futsal", f"Journée {max(JOURNEES)}", tab_exp),
+            file_name=f"classement_D1_J{max(JOURNEES)}.pdf", mime="application/pdf"
+        )
+
+    # ---- SCOUTING ----
+    with ong_sco:
+        st.markdown("### Fiche scouting équipe")
+        eq_sco = st.selectbox("Équipe à analyser", EQUIPES, key="pdf_sco_eq")
+        coul_sco = COULEUR_EQUIPE.get(eq_sco, D1_ROUGE)
+        clt_s = construire_classement()
+        row_s = clt_s[clt_s["equipe"]==eq_sco].iloc[0]
+        rang_s = clt_s[clt_s["equipe"]==eq_sco].index[0]+1
+
+        # Aperçu rapide
+        c1,c2,c3,c4 = st.columns(4)
+        c1.metric("Rang", f"{rang_s}e")
+        c2.metric("Points", int(row_s["Pts"]))
+        c3.metric("BP — BC", f"{int(row_s['BP'])} — {int(row_s['BC'])}")
+        c4.metric("Forme", "".join(row_s["forme"][-5:]))
+
+        st.markdown(
+            f'<div style="background:{D1_CARTE};border-left:3px solid {coul_sco};'
+            f'border-radius:8px;padding:.6rem 1rem;margin:.5rem 0">'
+            f'<b>Contenu du PDF :</b> position au classement, top buteurs avec barres,'
+            f' profil temporel offensif/défensif, situation de score (offensive et défensive).</div>',
+            unsafe_allow_html=True
+        )
+        st.download_button(
+            f"⬇ Télécharger Scouting — {eq_sco.split()[0]}",
+            pdf_scouting(eq_sco),
+            file_name=f"scouting_{eq_sco[:20].replace(' ','_')}.pdf",
+            mime="application/pdf"
+        )
+
+    # ---- BUTEUR ----
+    with ong_but:
+        st.markdown("### Fiche buteur")
+        recherche_pdf = st.text_input("🔍 Rechercher un buteur", key="pdf_but_search",
+                                       placeholder="Nom du joueur...")
+        top_but_list = df["joueur"].value_counts().index.tolist()
+        if recherche_pdf:
+            top_but_list = [j for j in top_but_list if recherche_pdf.upper() in j.upper()]
+        if top_but_list:
+            joueur_pdf = st.selectbox("Joueur", top_but_list, key="pdf_but_sel",
+                                       label_visibility="collapsed")
+            dj_pdf = df[df["joueur"]==joueur_pdf]
+            eq_pdf = dj_pdf["equipe_marque"].mode().iloc[0]
+            coul_pdf = COULEUR_EQUIPE.get(eq_pdf, D1_ROUGE)
+
+            c1,c2,c3 = st.columns(3)
+            c1.metric("Buts", len(dj_pdf))
+            c2.metric("Équipe", eq_pdf.split()[0])
+            c3.metric("Journées avec but", dj_pdf["journee"].nunique())
+
+            st.markdown(
+                f'<div style="background:{D1_CARTE};border-left:3px solid {coul_pdf};'
+                f'border-radius:8px;padding:.6rem 1rem;margin:.5rem 0">'
+                f'<b>Contenu du PDF :</b> stats complètes, situation au moment des buts,'
+                f' progression saison, adversaires favoris.</div>',
+                unsafe_allow_html=True
+            )
+            st.download_button(
+                f"⬇ Télécharger Fiche — {joueur_pdf}",
+                pdf_buteur(joueur_pdf),
+                file_name=f"buteur_{joueur_pdf.replace(' ','_')}.pdf",
+                mime="application/pdf"
+            )
+        else:
+            st.warning("Aucun joueur trouvé.")
+
+    # ---- FICHE MATCH ----
+    with ong_match:
+        st.markdown("### Fiche match")
+        matchs = construire_matchs()
+        j_pdf = st.selectbox("Journée", sorted(matchs["journee"].unique()),
+                              format_func=lambda x: f"Journée {x}", key="pdf_match_j")
+        matchs_j = matchs[matchs["journee"]==j_pdf]
+        opts_pdf = [f"{r.dom}  {r.score_dom} — {r.score_ext}  {r.ext}" for r in matchs_j.itertuples()]
+        m_pdf = st.selectbox("Match", opts_pdf, key="pdf_match_sel")
+        idx_pdf = opts_pdf.index(m_pdf)
+        m_row_pdf = matchs_j.iloc[idx_pdf]
+        dom_pdf, ext_pdf = m_row_pdf["dom"], m_row_pdf["ext"]
+        coul_d = COULEUR_EQUIPE.get(dom_pdf, D1_ROUGE)
+        coul_e = COULEUR_EQUIPE.get(ext_pdf, D1_BLEU)
+
+        c1,c2,c3 = st.columns(3)
+        c1.markdown(
+            f'<div style="text-align:center">{logo_b64(dom_pdf,40)}'
+            f'<div style="font-weight:700;font-size:.85rem;margin-top:.3rem">{dom_pdf.split()[0]}</div>'
+            f'<div style="color:{coul_d};font-size:1.6rem;font-weight:900">{m_row_pdf["score_dom"]}</div>'
+            f'</div>', unsafe_allow_html=True)
+        c2.markdown(
+            f'<div style="text-align:center;padding-top:.8rem">'
+            f'<div style="color:{D1_GRIS};font-size:.8rem">Journée {j_pdf}</div>'
+            f'<div style="font-size:1.2rem;font-weight:700;color:{D1_GRIS};margin-top:.3rem">VS</div>'
+            f'</div>', unsafe_allow_html=True)
+        c3.markdown(
+            f'<div style="text-align:center">{logo_b64(ext_pdf,40)}'
+            f'<div style="font-weight:700;font-size:.85rem;margin-top:.3rem">{ext_pdf.split()[0]}</div>'
+            f'<div style="color:{coul_e};font-size:1.6rem;font-weight:900">{m_row_pdf["score_ext"]}</div>'
+            f'</div>', unsafe_allow_html=True)
+
+        st.markdown(
+            f'<div style="background:{D1_CARTE};border-left:3px solid {D1_ROUGE};'
+            f'border-radius:8px;padding:.6rem 1rem;margin:.8rem 0">'
+            f'<b>Contenu du PDF :</b> stats du match, chronologie complète des buts'
+            f' avec période, minute, buteur et score en temps réel.</div>',
+            unsafe_allow_html=True
+        )
+        st.download_button(
+            f"⬇ Télécharger Fiche Match — J{j_pdf}",
+            pdf_match(j_pdf, dom_pdf, ext_pdf),
+            file_name=f"match_J{j_pdf}_{dom_pdf[:8].replace(' ','_')}_{ext_pdf[:8].replace(' ','_')}.pdf",
+            mime="application/pdf"
+        )
