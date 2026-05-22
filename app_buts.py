@@ -82,12 +82,19 @@ h3{{font-size:.98rem!important;margin-top:1rem!important;margin-bottom:.25rem!im
     border-left:3px solid {D1_ROUGE};padding-left:.5rem}}
 p,label,span,div{{color:{D1_BLANC}}}
 [data-testid="stSidebar"]{{background:{D1_BORDEAUX};border-right:1px solid {D1_BORDEAUX_2};
-    min-width:200px!important;max-width:200px!important}}
+    min-width:215px!important;max-width:215px!important}}
 [data-testid="stSidebar"] *{{color:{D1_BLANC}!important}}
-[data-testid="stSidebar"] .stRadio [role="radiogroup"] label{{
-    padding:.28rem .55rem;border-radius:5px;font-size:.86rem;font-weight:500;
-    margin:.06rem 0;cursor:pointer;transition:background .1s}}
-[data-testid="stSidebar"] .stRadio [role="radiogroup"] label:hover{{background:rgba(255,255,255,.1)}}
+.nav-cat{{font-size:.66rem;font-weight:800;letter-spacing:1px;color:{D1_OR}!important;
+    text-transform:uppercase;margin:.7rem 0 .25rem .2rem;opacity:.85}}
+[data-testid="stSidebar"] .stButton>button{{
+    text-align:left;justify-content:flex-start;
+    background:transparent;border:none;color:{D1_BLANC}!important;
+    font-size:.86rem;font-weight:500;padding:.32rem .55rem;border-radius:6px;
+    margin:.04rem 0;transition:background .1s;box-shadow:none!important}}
+[data-testid="stSidebar"] .stButton>button:hover{{background:rgba(255,255,255,.1)!important}}
+[data-testid="stSidebar"] .stButton>button[kind="primary"]{{
+    background:{D1_ROUGE}!important;color:white!important;font-weight:700}}
+[data-testid="stSidebar"] .stButton>button[kind="primary"]:hover{{background:{D1_ROUGE_CLAIR}!important}}
 [data-testid="stMetric"]{{background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};border-radius:10px;padding:.65rem .85rem}}
 [data-testid="stMetricValue"]{{font-size:1.4rem!important;font-weight:800;color:{D1_BLANC}}}
 [data-testid="stMetricLabel"]{{font-size:.7rem;color:{D1_GRIS};font-weight:500;text-transform:uppercase;letter-spacing:.4px}}
@@ -166,33 +173,39 @@ def hex_to_rgba(h, a=0.28):
 def style_fig(fig, h=320, titre=None):
     fig.update_layout(
         template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter", color=D1_BLANC, size=12), height=h,
-        margin=dict(l=8, r=8, t=38 if titre else 14, b=8),
-        title=dict(text=titre or "", font=dict(size=13, color=D1_BLANC)),
+        font=dict(family="Inter", color=D1_BLANC, size=13), height=h,
+        margin=dict(l=8, r=8, t=40 if titre else 16, b=8),
+        title=dict(text=titre or "", font=dict(size=14, color=D1_BLANC)),
         legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
+        uniformtext=dict(minsize=11, mode="hide"),
     )
-    fig.update_xaxes(gridcolor="rgba(255,255,255,.06)", zeroline=False)
-    fig.update_yaxes(gridcolor="rgba(255,255,255,.06)", zeroline=False)
+    fig.update_xaxes(gridcolor="rgba(255,255,255,.06)", zeroline=False,
+                     tickfont=dict(size=12))
+    fig.update_yaxes(gridcolor="rgba(255,255,255,.06)", zeroline=False,
+                     tickfont=dict(size=12))
     return fig
 
 def barh_equipes(noms, vals, h=320, texte=None, opacite=1.0):
-    """Barres horizontales avec couleur propre à chaque équipe, chiffres droits."""
+    """Barres horizontales avec couleur propre à chaque équipe, chiffres lisibles."""
     fig = go.Figure()
     for nom, val in zip(noms, vals):
         coul = COULEUR_EQUIPE.get(nom, D1_ROUGE)
         if opacite < 1:
             coul = hex_to_rgba(coul, opacite)
-        txt = str(int(val))
         fig.add_trace(go.Bar(
             x=[val], y=[nom], orientation="h",
             marker_color=coul,
-            text=[txt], textposition="auto",
-            textangle=0,
+            text=[str(int(val))], textposition="outside",
+            textangle=0, textfont=dict(size=13, color=D1_BLANC),
+            cliponaxis=False,
             showlegend=False, name=nom,
-            insidetextanchor="middle",
         ))
     fig.update_yaxes(autorange="reversed")
-    return style_fig(fig, h)
+    # marge à droite pour les labels externes
+    fig2 = style_fig(fig, h)
+    fig2.update_layout(margin=dict(l=8, r=40, t=16, b=8))
+    fig2.update_xaxes(showticklabels=False)
+    return fig2
 
 def barv_simple(x, y, couleur=D1_ROUGE, h=280, titre=None):
     if isinstance(couleur, list):
@@ -289,23 +302,38 @@ def reconstruire_score(df_match, dom, ext):
     return evts
 
 # ============================================================================
-# SIDEBAR
+# SIDEBAR — navigation par catégories
 # ============================================================================
+NAV = {
+    "VUE D'ENSEMBLE": [("🏠", "Accueil"), ("🏆", "Classement")],
+    "ÉQUIPES":        [("🛡", "Vue équipe"), ("🔭", "Scouting adverse"),
+                       ("⚔", "Confrontations"), ("🎯", "Tactique / Origines")],
+    "JOUEURS":        [("👟", "Classement buteurs")],
+    "MATCHS":         [("⚽", "Fiche match")],
+    "ANALYSE":        [("⏱", "Profil temporel"), ("📊", "Dynamique de score"),
+                       ("📈", "Analyse avancée")],
+}
+
+if "page" not in st.session_state:
+    st.session_state.page = "Accueil"
+
 with st.sidebar:
     if LOGO_D1.exists():
-        st.image(str(LOGO_D1), width=88)
-    st.markdown("---")
-    page = st.radio("", [
-        "🏠 Accueil","🏆 Classement","⚽ Fiche match",
-        "👟 Classement buteurs","⏱ Profil temporel",
-        "📊 Dynamique de score","🛡 Vue équipe",
-        "🎯 Tactique / Origines","⚔ Confrontations",
-        "🔭 Scouting adverse","📈 Analyse avancée",
-        "📄 Exports PDF",
-    ], label_visibility="collapsed")
-    page = page.split(" ",1)[-1].strip()
-    st.markdown("---")
+        st.image(str(LOGO_D1), width=84)
+    st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
+    for cat, items in NAV.items():
+        st.markdown(f"<div class='nav-cat'>{cat}</div>", unsafe_allow_html=True)
+        for emoji, nom in items:
+            actif = (st.session_state.page == nom)
+            if st.button(f"{emoji}  {nom}", key=f"nav_{nom}",
+                         use_container_width=True,
+                         type="primary" if actif else "secondary"):
+                st.session_state.page = nom
+                st.rerun()
+    st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
     st.caption(f"{len(df)} buts · {len(EQUIPES)} équipes · J{min(JOURNEES)}–J{max(JOURNEES)}")
+
+page = st.session_state.page
 
 # ============================================================================
 # PDF
@@ -596,6 +624,28 @@ def pdf_match(journee, dom, ext):
     doc.build(elems); buf.seek(0)
     return buf
 
+
+def bloc_export(pdf_buffer, nom_fichier, label="Exporter en PDF", csv_df=None, csv_nom=None):
+    """Bloc d'export uniforme placé en bas de page."""
+    st.markdown("<hr style='border:none;border-top:1px solid #6C1420;margin:1.2rem 0 .6rem 0'>",
+                unsafe_allow_html=True)
+    st.markdown("<div class='nav-cat' style='color:#9A8E91!important;margin-bottom:.3rem'>EXPORTER</div>",
+                unsafe_allow_html=True)
+    if csv_df is not None:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.download_button(f"⬇ {label} (PDF)", pdf_buffer,
+                               file_name=nom_fichier, mime="application/pdf",
+                               use_container_width=True)
+        with c2:
+            st.download_button("⬇ Données (CSV)",
+                               csv_df.to_csv(index=False).encode("utf-8-sig"),
+                               file_name=csv_nom or nom_fichier.replace(".pdf",".csv"),
+                               mime="text/csv", use_container_width=True)
+    else:
+        st.download_button(f"⬇ {label} (PDF)", pdf_buffer,
+                           file_name=nom_fichier, mime="application/pdf")
+
 # ============================================================================
 # PAGE — ACCUEIL
 # ============================================================================
@@ -695,15 +745,6 @@ elif page == "Classement":
     st.markdown("<p class='note' style='margin-top:.5rem'>Forme sur les 5 derniers matchs</p>",
                 unsafe_allow_html=True)
 
-    tab_exp = clt[["equipe","J","V","N","D","Pts","BP","BC","Diff"]].copy()
-    tab_exp.columns = ["Équipe","J","V","N","D","Pts","BP","BC","Diff"]
-    c1,c2 = st.columns(2)
-    with c1: dl_csv(tab_exp,"⬇ CSV","classement_d1.csv")
-    with c2:
-        st.download_button("⬇ PDF",
-            pdf_tableau("Classement D1 Futsal",f"Journée {max(JOURNEES)}",tab_exp),
-            file_name="classement_d1.pdf",mime="application/pdf")
-
     st.markdown("### Évolution des points (cumulés)")
     evo = evolution_classement()
     fig = go.Figure()
@@ -717,6 +758,12 @@ elif page == "Classement":
         ))
     fig.update_xaxes(tickvals=JOURNEES, ticktext=[f"J{j}" for j in JOURNEES])
     st.plotly_chart(style_fig(fig, 440), use_container_width=True)
+
+    tab_exp = clt[["equipe","J","V","N","D","Pts","BP","BC","Diff"]].copy()
+    tab_exp.columns = ["Équipe","J","V","N","D","Pts","BP","BC","Diff"]
+    bloc_export(pdf_tableau("Classement D1 Futsal", f"Journée {max(JOURNEES)}", tab_exp),
+                f"classement_D1_J{max(JOURNEES)}.pdf", "Exporter le classement",
+                csv_df=tab_exp, csv_nom="classement_d1.csv")
 
 # ============================================================================
 # PAGE — FICHE MATCH
@@ -838,6 +885,10 @@ elif page == "Fiche match":
         st.markdown(f"**{ext.split()[0]}**")
         for j,n in buts_ext["joueur"].value_counts().items(): st.markdown(f'{"⚽"*n} **{j}** ({n})')
 
+    bloc_export(pdf_match(j_sel, dom, ext),
+                f"match_J{j_sel}_{dom[:8].replace(' ','_')}_{ext[:8].replace(' ','_')}.pdf",
+                "Exporter la fiche match")
+
 # ============================================================================
 # PAGE — CLASSEMENT BUTEURS
 # ============================================================================
@@ -863,11 +914,6 @@ elif page == "Classement buteurs":
         st.markdown("")
     aff = clt.rename(columns={"joueur":"Joueur","buts":"Buts","equipe":"Équipe"})[["Joueur","Équipe","Buts"]]
     st.dataframe(aff,use_container_width=True,height=420)
-    c1,c2=st.columns(2)
-    with c1: dl_csv(aff,"⬇ CSV","buteurs.csv")
-    with c2:
-        st.download_button("⬇ PDF",pdf_tableau("Classement des buteurs","D1 Futsal",aff.head(40)),
-                           file_name="buteurs.pdf",mime="application/pdf")
     st.markdown("### Profil d'un buteur")
     recherche = st.text_input("🔍 Rechercher un buteur", placeholder="Nom du joueur...")
     liste_joueurs = clt["joueur"].tolist()
@@ -979,6 +1025,9 @@ elif page == "Classement buteurs":
         ))
         st.plotly_chart(style_fig(fig_comp, 300), use_container_width=True)
         st.markdown("<p class='note'>Valeurs en % du total de buts du joueur.</p>", unsafe_allow_html=True)
+
+    bloc_export(pdf_buteur(j), f"buteur_{j.replace(' ','_')}.pdf",
+                f"Exporter la fiche de {j.split()[0]}")
 
 # ============================================================================
 # PAGE — PROFIL TEMPOREL
@@ -1129,6 +1178,9 @@ elif page == "Vue équipe":
         st.plotly_chart(style_fig(fig3,max(220,28*len(oo))),use_container_width=True)
     else:
         st.info("Origine des buts pas encore renseignée pour cette équipe.")
+
+    bloc_export(pdf_scouting(eq), f"fiche_{eq[:20].replace(' ','_')}.pdf",
+                f"Exporter la fiche {eq.split()[0]}")
 
 # ============================================================================
 # PAGE — TACTIQUE / ORIGINES
@@ -1406,6 +1458,9 @@ elif page == "Scouting adverse":
         c2.metric("Buts encaissés P2", vul_p2, f"{vul_p2/tot_enc*100:.0f}%")
         c3.metric("Plus vulnérable en", "1re période" if vul_p1>vul_p2 else "2e période")
 
+    bloc_export(pdf_scouting(eq), f"scouting_{eq[:20].replace(' ','_')}.pdf",
+                f"Exporter le scouting {eq.split()[0]}")
+
 
 # ============================================================================
 # PAGE — ANALYSE AVANCÉE
@@ -1416,7 +1471,10 @@ elif page == "Analyse avancée":
     matchs = construire_matchs()
 
     # ---- RÉGULARITÉ OFFENSIVE ----
-    st.markdown("### Régularité offensive (buts/match)")
+    st.markdown("### Régularité offensive")
+    st.markdown("<p class='note'>Moyenne de buts par match, et indice de régularité "
+                "(plus l'écart-type est bas, plus l'équipe est constante d'un match à l'autre).</p>",
+                unsafe_allow_html=True)
     rows_reg = []
     for eq in EQUIPES:
         meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
@@ -1431,20 +1489,38 @@ elif page == "Analyse avancée":
                              "std":pd.Series(bpm).std(ddof=0),"min":min(bpm),"max":max(bpm)})
     reg = pd.DataFrame(rows_reg).sort_values("moy",ascending=False)
 
-    fig_reg = go.Figure()
-    for _,r in reg.iterrows():
-        coul = COULEUR_EQUIPE.get(r["equipe"], D1_ROUGE)
-        # Barre principale
-        fig_reg.add_trace(go.Bar(
-            x=[r["moy"]], y=[r["equipe"]], orientation="h",
-            marker_color=coul, name=r["equipe"],
-            text=[f'{r["moy"]:.1f} ± {r["std"]:.1f}'],
-            textposition="auto", textangle=0, showlegend=False,
-            error_x=dict(type="data", array=[r["std"]], color="rgba(255,255,255,.5)", thickness=2)
-        ))
-    fig_reg.update_yaxes(autorange="reversed")
-    st.plotly_chart(style_fig(fig_reg, max(320,30*len(reg))), use_container_width=True)
-    st.markdown("<p class='note'>Barre d'erreur = écart-type. Plus la barre est large, plus l'équipe est irrégulière.</p>",
+    cg_r, cd_r = st.columns(2)
+    with cg_r:
+        st.markdown("#### Moyenne de buts par match")
+        fig_moy = go.Figure()
+        for _,r in reg.iterrows():
+            coul = COULEUR_EQUIPE.get(r["equipe"], D1_ROUGE)
+            fig_moy.add_trace(go.Bar(
+                x=[round(r["moy"],1)], y=[r["equipe"]], orientation="h",
+                marker_color=coul, text=[f'{r["moy"]:.1f}'],
+                textposition="auto", textangle=0, showlegend=False,
+                hovertemplate=f'{r["equipe"]}<br>Moyenne : {r["moy"]:.1f} buts/match<br>'
+                              f'Mini : {r["min"]} · Maxi : {r["max"]}<extra></extra>'
+            ))
+        fig_moy.update_yaxes(autorange="reversed")
+        st.plotly_chart(style_fig(fig_moy, max(320,30*len(reg))), use_container_width=True)
+    with cd_r:
+        st.markdown("#### Régularité (écart-type, plus bas = plus constant)")
+        reg_s = reg.sort_values("std")
+        fig_std = go.Figure()
+        for _,r in reg_s.iterrows():
+            # vert si régulier (std bas), rouge si irrégulier (std haut)
+            ratio = (r["std"]-reg_s["std"].min())/((reg_s["std"].max()-reg_s["std"].min()) or 1)
+            coul = D1_VERT if ratio<0.4 else(D1_OR if ratio<0.7 else D1_ROUGE)
+            fig_std.add_trace(go.Bar(
+                x=[round(r["std"],1)], y=[r["equipe"]], orientation="h",
+                marker_color=coul, text=[f'± {r["std"]:.1f}'],
+                textposition="auto", textangle=0, showlegend=False,
+                hovertemplate=f'{r["equipe"]}<br>Écart-type : {r["std"]:.1f}<extra></extra>'
+            ))
+        fig_std.update_yaxes(autorange="reversed")
+        st.plotly_chart(style_fig(fig_std, max(320,30*len(reg_s))), use_container_width=True)
+    st.markdown("<p class='note'>🟢 régulier · 🟡 moyen · 🔴 irrégulier — survole une barre pour le détail mini/maxi.</p>",
                 unsafe_allow_html=True)
 
     st.markdown("---")
@@ -1582,144 +1658,3 @@ elif page == "Analyse avancée":
                     "Solidité déf. = inversement proportionnelle aux buts encaissés/match.</p>",
                     unsafe_allow_html=True)
 
-# ============================================================================
-# PAGE — EXPORTS PDF
-# ============================================================================
-elif page == "Exports PDF":
-    st.title("Exports PDF")
-    st.markdown("<p class='note'>Génère des fiches PDF prêtes à imprimer ou partager.</p>",
-                unsafe_allow_html=True)
-
-    ong_cls, ong_sco, ong_but, ong_match = st.tabs([
-        "🏆 Classement", "🔭 Scouting", "👟 Fiche buteur", "⚽ Fiche match"
-    ])
-
-    # ---- CLASSEMENT ----
-    with ong_cls:
-        st.markdown("### Classement D1 Futsal")
-        clt = construire_classement()
-        tab_exp = clt[["equipe","J","V","N","D","Pts","BP","BC","Diff"]].copy()
-        tab_exp.columns = ["Équipe","J","V","N","D","Pts","BP","BC","Diff"]
-        c1,c2 = st.columns(2)
-        with c1:
-            st.metric("Journée couverte", f"J{max(JOURNEES)}")
-        with c2:
-            st.metric("Équipes", len(clt))
-        st.dataframe(tab_exp.set_index("Équipe"), use_container_width=True, height=360)
-        st.download_button(
-            "⬇ Télécharger le PDF Classement",
-            pdf_tableau("Classement D1 Futsal", f"Journée {max(JOURNEES)}", tab_exp),
-            file_name=f"classement_D1_J{max(JOURNEES)}.pdf", mime="application/pdf"
-        )
-
-    # ---- SCOUTING ----
-    with ong_sco:
-        st.markdown("### Fiche scouting équipe")
-        eq_sco = st.selectbox("Équipe à analyser", EQUIPES, key="pdf_sco_eq")
-        coul_sco = COULEUR_EQUIPE.get(eq_sco, D1_ROUGE)
-        clt_s = construire_classement()
-        row_s = clt_s[clt_s["equipe"]==eq_sco].iloc[0]
-        rang_s = clt_s[clt_s["equipe"]==eq_sco].index[0]+1
-
-        # Aperçu rapide
-        c1,c2,c3,c4 = st.columns(4)
-        c1.metric("Rang", f"{rang_s}e")
-        c2.metric("Points", int(row_s["Pts"]))
-        c3.metric("BP — BC", f"{int(row_s['BP'])} — {int(row_s['BC'])}")
-        c4.metric("Forme", "".join(row_s["forme"][-5:]))
-
-        st.markdown(
-            f'<div style="background:{D1_CARTE};border-left:3px solid {coul_sco};'
-            f'border-radius:8px;padding:.6rem 1rem;margin:.5rem 0">'
-            f'<b>Contenu du PDF :</b> position au classement, top buteurs avec barres,'
-            f' profil temporel offensif/défensif, situation de score (offensive et défensive).</div>',
-            unsafe_allow_html=True
-        )
-        st.download_button(
-            f"⬇ Télécharger Scouting — {eq_sco.split()[0]}",
-            pdf_scouting(eq_sco),
-            file_name=f"scouting_{eq_sco[:20].replace(' ','_')}.pdf",
-            mime="application/pdf"
-        )
-
-    # ---- BUTEUR ----
-    with ong_but:
-        st.markdown("### Fiche buteur")
-        recherche_pdf = st.text_input("🔍 Rechercher un buteur", key="pdf_but_search",
-                                       placeholder="Nom du joueur...")
-        top_but_list = df["joueur"].value_counts().index.tolist()
-        if recherche_pdf:
-            top_but_list = [j for j in top_but_list if recherche_pdf.upper() in j.upper()]
-        if top_but_list:
-            joueur_pdf = st.selectbox("Joueur", top_but_list, key="pdf_but_sel",
-                                       label_visibility="collapsed")
-            dj_pdf = df[df["joueur"]==joueur_pdf]
-            eq_pdf = dj_pdf["equipe_marque"].mode().iloc[0]
-            coul_pdf = COULEUR_EQUIPE.get(eq_pdf, D1_ROUGE)
-
-            c1,c2,c3 = st.columns(3)
-            c1.metric("Buts", len(dj_pdf))
-            c2.metric("Équipe", eq_pdf.split()[0])
-            c3.metric("Journées avec but", dj_pdf["journee"].nunique())
-
-            st.markdown(
-                f'<div style="background:{D1_CARTE};border-left:3px solid {coul_pdf};'
-                f'border-radius:8px;padding:.6rem 1rem;margin:.5rem 0">'
-                f'<b>Contenu du PDF :</b> stats complètes, situation au moment des buts,'
-                f' progression saison, adversaires favoris.</div>',
-                unsafe_allow_html=True
-            )
-            st.download_button(
-                f"⬇ Télécharger Fiche — {joueur_pdf}",
-                pdf_buteur(joueur_pdf),
-                file_name=f"buteur_{joueur_pdf.replace(' ','_')}.pdf",
-                mime="application/pdf"
-            )
-        else:
-            st.warning("Aucun joueur trouvé.")
-
-    # ---- FICHE MATCH ----
-    with ong_match:
-        st.markdown("### Fiche match")
-        matchs = construire_matchs()
-        j_pdf = st.selectbox("Journée", sorted(matchs["journee"].unique()),
-                              format_func=lambda x: f"Journée {x}", key="pdf_match_j")
-        matchs_j = matchs[matchs["journee"]==j_pdf]
-        opts_pdf = [f"{r.dom}  {r.score_dom} — {r.score_ext}  {r.ext}" for r in matchs_j.itertuples()]
-        m_pdf = st.selectbox("Match", opts_pdf, key="pdf_match_sel")
-        idx_pdf = opts_pdf.index(m_pdf)
-        m_row_pdf = matchs_j.iloc[idx_pdf]
-        dom_pdf, ext_pdf = m_row_pdf["dom"], m_row_pdf["ext"]
-        coul_d = COULEUR_EQUIPE.get(dom_pdf, D1_ROUGE)
-        coul_e = COULEUR_EQUIPE.get(ext_pdf, D1_BLEU)
-
-        c1,c2,c3 = st.columns(3)
-        c1.markdown(
-            f'<div style="text-align:center">{logo_b64(dom_pdf,40)}'
-            f'<div style="font-weight:700;font-size:.85rem;margin-top:.3rem">{dom_pdf.split()[0]}</div>'
-            f'<div style="color:{coul_d};font-size:1.6rem;font-weight:900">{m_row_pdf["score_dom"]}</div>'
-            f'</div>', unsafe_allow_html=True)
-        c2.markdown(
-            f'<div style="text-align:center;padding-top:.8rem">'
-            f'<div style="color:{D1_GRIS};font-size:.8rem">Journée {j_pdf}</div>'
-            f'<div style="font-size:1.2rem;font-weight:700;color:{D1_GRIS};margin-top:.3rem">VS</div>'
-            f'</div>', unsafe_allow_html=True)
-        c3.markdown(
-            f'<div style="text-align:center">{logo_b64(ext_pdf,40)}'
-            f'<div style="font-weight:700;font-size:.85rem;margin-top:.3rem">{ext_pdf.split()[0]}</div>'
-            f'<div style="color:{coul_e};font-size:1.6rem;font-weight:900">{m_row_pdf["score_ext"]}</div>'
-            f'</div>', unsafe_allow_html=True)
-
-        st.markdown(
-            f'<div style="background:{D1_CARTE};border-left:3px solid {D1_ROUGE};'
-            f'border-radius:8px;padding:.6rem 1rem;margin:.8rem 0">'
-            f'<b>Contenu du PDF :</b> stats du match, chronologie complète des buts'
-            f' avec période, minute, buteur et score en temps réel.</div>',
-            unsafe_allow_html=True
-        )
-        st.download_button(
-            f"⬇ Télécharger Fiche Match — J{j_pdf}",
-            pdf_match(j_pdf, dom_pdf, ext_pdf),
-            file_name=f"match_J{j_pdf}_{dom_pdf[:8].replace(' ','_')}_{ext_pdf[:8].replace(' ','_')}.pdf",
-            mime="application/pdf"
-        )
