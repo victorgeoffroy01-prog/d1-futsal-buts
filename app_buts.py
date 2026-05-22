@@ -179,7 +179,7 @@ def style_fig(fig, h=320, titre=None):
         margin=dict(l=8, r=8, t=40 if titre else 16, b=8),
         title=dict(text=titre or "", font=dict(size=15, color=D1_BLANC)),
         legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=12)),
-        uniformtext=dict(minsize=12, mode="hide"),
+        uniformtext=dict(minsize=11, mode="show"),
     )
     fig.update_xaxes(gridcolor="rgba(255,255,255,.06)", zeroline=False,
                      tickfont=dict(size=13, color=D1_BLANC))
@@ -261,6 +261,16 @@ def nc(eq):
     return NOM_COURT.get(eq, eq.split()[0])
 def ncs(liste):
     return [nc(e) for e in liste]
+
+def nj(nom, court=False):
+    """Nom de famille en priorité (dernier mot) pour graphes."""
+    parts = nom.strip().split()
+    if len(parts) <= 1:
+        return nom
+    return parts[-1]  # Nom de famille = dernier token
+
+def njs(liste):
+    return [nj(n) for n in liste]
 
 # ============================================================================
 # FONCTIONS MÉTIER
@@ -696,7 +706,7 @@ if page == "Accueil":
     c1.metric("Buts", len(df)); c2.metric("Matchs", nb_matchs)
     c3.metric("Moy. buts/match", f"{moy:.1f}")
     c4.metric("Top buteur", f"{top_but.max()} buts", top_but.idxmax())
-    c5.metric("Meilleure attaque", f"{top_att.max()} buts", top_att.idxmax().split()[0])
+    c5.metric("Meilleure attaque", f"{top_att.max()} buts", nc(top_att.idxmax()))
 
     st.markdown("### Buts par journée")
     parj = df.groupby("journee").size().reindex(JOURNEES, fill_value=0)
@@ -799,11 +809,11 @@ elif page == "Classement":
 
     # Filtre journée
     j_max = max(JOURNEES)
-    j_filtre = st.select_slider(
+    j_filtre = st.selectbox(
         "Classement après la journée",
         options=JOURNEES,
-        value=max(JOURNEES),
-        format_func=lambda x: f"J{x}"
+        index=len(JOURNEES)-1,
+        format_func=lambda x: f"Journée {x}"
     )
     df_filtre = df[df["journee"] <= j_filtre]
 
@@ -903,10 +913,11 @@ elif page == "Classement":
         for _,r in ser_inv.iterrows():
             if r["serie_inv"]==0: continue
             coul_s = D1_VERT if r["serie_inv"]>=5 else(D1_OR if r["serie_inv"]>=3 else D1_BLANC)
-            fig_ser.add_trace(go.Bar(x=[r["serie_inv"]],y=[r["eq"]],orientation="h",
+            fig_ser.add_trace(go.Bar(x=[r["serie_inv"]],y=[nc(r["eq"])],orientation="h",
                                      marker_color=COULEUR_EQUIPE.get(r["eq"],D1_ROUGE),
                                      text=[f'{int(r["serie_inv"])} matchs'],
-                                     textposition="auto",textangle=0,showlegend=False))
+                                     textposition="outside",textangle=0,showlegend=False,
+                                     textfont=dict(size=14,color="#F5F2F3")))
         fig_ser.update_yaxes(autorange="reversed")
         st.plotly_chart(style_fig(fig_ser, max(220,28*len(ser_inv[ser_inv["serie_inv"]>0]))),
                         use_container_width=True)
@@ -916,7 +927,7 @@ elif page == "Classement":
         if len(ser_v):
             fig_v = go.Figure()
             for _,r in ser_v.iterrows():
-                fig_v.add_trace(go.Bar(x=[r["serie_v"]],y=[r["eq"]],orientation="h",
+                fig_v.add_trace(go.Bar(x=[r["serie_v"]],y=[nc(r["eq"])],orientation="h",
                                        marker_color=COULEUR_EQUIPE.get(r["eq"],D1_ROUGE),
                                        text=[f'{int(r["serie_v"])} victoires'],
                                        textposition="auto",textangle=0,showlegend=False))
@@ -1148,13 +1159,14 @@ elif page == "Buteurs":
         fig_adv = go.Figure()
         for eq_, n_ in adv.items():
             c_ = COULEUR_EQUIPE.get(eq_, D1_ROUGE)
-            fig_adv.add_trace(go.Bar(x=[n_], y=[eq_], orientation="h",
+            fig_adv.add_trace(go.Bar(x=[n_], y=[nc(eq_)], orientation="h",
                                      marker_color=c_, text=[n_],
-                                     textposition="auto", textangle=0, showlegend=False))
+                                     textposition="outside", textangle=0, showlegend=False,
+                                     textfont=dict(size=14,color="#F5F2F3"),cliponaxis=False))
         fig_adv.update_yaxes(autorange="reversed")
         st.plotly_chart(style_fig(fig_adv, 250), use_container_width=True)
 
-    axes_radar = ["Buts P1","Buts P2","En menant","À égalité","En mené"]
+    axes_radar = ["Buts P1","Buts P2","En menant","À égalité","Est mené"]
     cg2, cd2 = st.columns(2)
     with cg2:
         st.markdown("### Radar — profil de buteur")
@@ -1278,7 +1290,7 @@ elif page == "Dynamique de score":
     sit=d["situation"].value_counts().reindex(ordre,fill_value=0)
     tot=sit.sum() or 1
     c1,c2,c3=st.columns(3)
-    c1.metric("En étant mené",int(sit["Mené"]),f"{sit['Mené']/tot*100:.0f}%")
+    c1.metric("Est mené",int(sit["Mené"]),f"{sit['Mené']/tot*100:.0f}%")
     c2.metric("À égalité",int(sit["Égalité"]),f"{sit['Égalité']/tot*100:.0f}%")
     c3.metric("En menant",int(sit["Menant"]),f"{sit['Menant']/tot*100:.0f}%")
     fig=go.Figure(go.Bar(x=ordre,y=sit.values,
@@ -1300,11 +1312,12 @@ elif page == "Dynamique de score":
         comp=pd.DataFrame(rows)
         c1,c2,c3=st.columns(3)
         with c1:
-            st.markdown("#### En étant mené")
+            st.markdown("#### Est mené")
             s=comp.sort_values("pct_mené",ascending=False)
             fig_m=go.Figure(go.Bar(x=s["pct_mené"].round(0),y=s["Équipe"],orientation="h",
                                    marker_color=D1_ROUGE,text=[f"{v:.0f}%" for v in s["pct_mené"]],
-                                   textposition="auto",textangle=0))
+                                   textposition="outside",textangle=0,
+                                   textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
             fig_m.update_yaxes(autorange="reversed")
             st.plotly_chart(style_fig(fig_m,max(280,28*len(s))),use_container_width=True)
         with c2:
@@ -1312,7 +1325,8 @@ elif page == "Dynamique de score":
             s=comp.sort_values("pct_egal",ascending=False)
             fig_e=go.Figure(go.Bar(x=s["pct_egal"].round(0),y=s["Équipe"],orientation="h",
                                    marker_color=D1_OR,text=[f"{v:.0f}%" for v in s["pct_egal"]],
-                                   textposition="auto",textangle=0))
+                                   textposition="outside",textangle=0,
+                                   textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
             fig_e.update_yaxes(autorange="reversed")
             st.plotly_chart(style_fig(fig_e,max(280,28*len(s))),use_container_width=True)
         with c3:
@@ -1320,7 +1334,8 @@ elif page == "Dynamique de score":
             s=comp.sort_values("pct_men",ascending=False)
             fig_v=go.Figure(go.Bar(x=s["pct_men"].round(0),y=s["Équipe"],orientation="h",
                                    marker_color=D1_VERT,text=[f"{v:.0f}%" for v in s["pct_men"]],
-                                   textposition="auto",textangle=0))
+                                   textposition="outside",textangle=0,
+                                   textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
             fig_v.update_yaxes(autorange="reversed")
             st.plotly_chart(style_fig(fig_v,max(280,28*len(s))),use_container_width=True)
 
@@ -1353,8 +1368,9 @@ elif page == "Vue équipe":
     with cg:
         st.markdown("### Buteurs")
         bb=dpour["joueur"].value_counts()
-        fig=go.Figure(go.Bar(x=bb.values,y=bb.index,orientation="h",
-                             marker_color=coul,text=bb.values,textposition="auto",textangle=0))
+        fig=go.Figure(go.Bar(x=bb.values,y=[nj(j) for j in bb.index],orientation="h",
+                             marker_color=coul,text=bb.values,textposition="outside",textangle=0,
+                             textfont=dict(size=14,color="#F5F2F3"),cliponaxis=False))
         fig.update_yaxes(autorange="reversed")
         st.plotly_chart(style_fig(fig,max(240,24*len(bb))),use_container_width=True)
     with cd:
@@ -1631,9 +1647,10 @@ elif page == "Scouting adverse":
         with cd:
             st.markdown("### Buteurs qui leur ont le plus scoré")
             scoreurs = dcontre["joueur"].value_counts().head(8)
-            fig7 = go.Figure(go.Bar(x=scoreurs.values, y=scoreurs.index, orientation="h",
-                                    marker_color=D1_ROUGE, text=scoreurs.values,
-                                    textposition="auto", textangle=0))
+            fig7 = go.Figure(go.Bar(x=scoreurs.values, y=[nj(j) for j in scoreurs.index],
+                                    orientation="h", marker_color=D1_ROUGE,
+                                    text=scoreurs.values, textposition="outside", textangle=0,
+                                    textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
             fig7.update_yaxes(autorange="reversed")
             st.plotly_chart(style_fig(fig7, max(220,28*len(scoreurs))), use_container_width=True)
 
@@ -1784,9 +1801,10 @@ elif page == "Analyse avancée":
         fig_c1 = go.Figure()
         for _,r in conc.sort_values("top1_pct",ascending=False).iterrows():
             c = COULEUR_EQUIPE.get(r["equipe"], D1_ROUGE)
-            fig_c1.add_trace(go.Bar(x=[r["top1_pct"]], y=[r["equipe"]], orientation="h",
+            fig_c1.add_trace(go.Bar(x=[r["top1_pct"]], y=[nc(r["equipe"])], orientation="h",
                                     marker_color=c, text=[f'{r["top1_pct"]:.0f}%'],
-                                    textposition="auto", textangle=0, showlegend=False))
+                                    textposition="outside", textangle=0, showlegend=False,
+                                    textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
         fig_c1.update_yaxes(autorange="reversed")
         st.plotly_chart(style_fig(fig_c1, max(280,28*len(conc))), use_container_width=True)
     with cd:
@@ -1794,9 +1812,10 @@ elif page == "Analyse avancée":
         fig_c2 = go.Figure()
         for _,r in conc.sort_values("nb_buteurs",ascending=False).iterrows():
             c = COULEUR_EQUIPE.get(r["equipe"], D1_ROUGE)
-            fig_c2.add_trace(go.Bar(x=[r["nb_buteurs"]], y=[r["equipe"]], orientation="h",
+            fig_c2.add_trace(go.Bar(x=[r["nb_buteurs"]], y=[nc(r["equipe"])], orientation="h",
                                     marker_color=c, text=[int(r["nb_buteurs"])],
-                                    textposition="auto", textangle=0, showlegend=False))
+                                    textposition="outside", textangle=0, showlegend=False,
+                                    textfont=dict(size=13,color="#F5F2F3"),cliponaxis=False))
         fig_c2.update_yaxes(autorange="reversed")
         st.plotly_chart(style_fig(fig_c2, max(280,28*len(conc))), use_container_width=True)
 
@@ -1999,33 +2018,74 @@ def _carte_stat(titre, valeur_principale, sous_texte=None, couleur=None):
         html += f'<div style="font-size:.85rem;color:{D1_GRIS};margin-top:.4rem;font-weight:500">{sous_texte}</div>'
     html += '</div>'
     return html
-
-
 # ============================================================================
-# PDF RAPPORT COMPLET
+# PDF RAPPORT COMPLET — style Laval (fond blanc, couleur équipe)
 # ============================================================================
 def pdf_rapport_complet(eq):
-    """PDF complet type rapport de performance, comme le document Laval."""
-    from reportlab.platypus import PageBreak
+    """PDF complet avec fond blanc, structure identique au rapport Laval."""
+    from reportlab.platypus import KeepTogether
+
     buf  = BytesIO()
     doc  = SimpleDocTemplate(buf, pagesize=A4,
-                              topMargin=1.2*cm, bottomMargin=1.5*cm,
+                              topMargin=1.5*cm, bottomMargin=1.5*cm,
                               leftMargin=1.8*cm, rightMargin=1.8*cm)
-    stl  = getSampleStyleSheet()
-    elems= []
-    coul_hex = COULEUR_EQUIPE.get(eq, D1_ROUGE)
-    coul_rl  = colors.HexColor(coul_hex)
-    rouge_rl = colors.HexColor(D1_ROUGE)
-    np_stl = ParagraphStyle("np",parent=stl["Normal"],fontSize=8.5,spaceBefore=1,spaceAfter=1)
-    gris_stl = ParagraphStyle("gr",parent=stl["Normal"],fontSize=8,
-                               textColor=colors.grey,spaceBefore=1,spaceAfter=1)
-    titre_sec = ParagraphStyle("ts",parent=stl["Normal"],textColor=coul_rl,
-                                fontSize=12,fontName="Helvetica-Bold",
-                                spaceBefore=14,spaceAfter=6)
-    sous_sec  = ParagraphStyle("ss",parent=stl["Normal"],textColor=colors.HexColor(D1_BLANC[:7]),
-                                fontSize=10,fontName="Helvetica-Bold",
-                                spaceBefore=8,spaceAfter=4)
 
+    # Couleurs
+    coul_hex = COULEUR_EQUIPE.get(eq, D1_ROUGE)
+    COUL     = colors.HexColor(coul_hex)
+    BLANC    = colors.white
+    GRIS     = colors.HexColor("#F7F4F5")
+    BORD     = colors.HexColor("#E0D8DA")
+    TEXTE    = colors.HexColor("#1A1A1E")
+    TEXTE_G  = colors.HexColor("#6B6066")
+    VERT_RL  = colors.HexColor(D1_VERT)
+    OR_RL    = colors.HexColor(D1_OR)
+    ROUGE_RL = colors.HexColor(D1_ROUGE)
+
+    stl = getSampleStyleSheet()
+    def ps(name, **kw):
+        return ParagraphStyle(name, parent=stl["Normal"], **kw)
+
+    titre_section = ps("tit_sec", textColor=BLANC, fontSize=11, fontName="Helvetica-Bold",
+                        backColor=COUL, borderPadding=(6, 8, 6, 8), spaceBefore=14, spaceAfter=6)
+    sous_titre    = ps("sous", textColor=COUL, fontSize=10, fontName="Helvetica-Bold",
+                        spaceBefore=8, spaceAfter=3)
+    corps         = ps("corps", textColor=TEXTE, fontSize=8.5, spaceBefore=1, spaceAfter=1)
+    gris_stl      = ps("gr", textColor=TEXTE_G, fontSize=8, spaceBefore=1, spaceAfter=1)
+
+    def sep():
+        return HRFlowable(width="100%", thickness=0.6, color=BORD, spaceAfter=4, spaceBefore=2)
+
+    def tbl_style_base():
+        return [
+            ("FONTSIZE", (0,0), (-1,-1), 8.5),
+            ("TOPPADDING", (0,0), (-1,-1), 4),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ("GRID", (0,0), (-1,-1), 0.4, BORD),
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("ALIGN", (1,0), (-1,-1), "CENTER"),
+        ]
+
+    def header_row():
+        return [
+            ("BACKGROUND", (0,0), (-1,0), COUL),
+            ("TEXTCOLOR", (0,0), (-1,0), BLANC),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ]
+
+    def zebra():
+        return [("ROWBACKGROUNDS", (0,1), (-1,-1), [BLANC, GRIS])]
+
+    def mini_barre_h(val, max_val, w=5*cm, h=9, coul_fill=None):
+        """Mini barre horizontale ReportLab."""
+        cf = colors.HexColor(coul_fill) if coul_fill else COUL
+        d = Drawing(w, h+2)
+        d.add(Rect(0, 0, w, h, fillColor=colors.HexColor("#F0EDED"), strokeColor=None))
+        if max_val > 0:
+            d.add(Rect(0, 0, val/max_val*w, h, fillColor=cf, strokeColor=None))
+        return d
+
+    # ---- DONNÉES ----
     matchs   = _get_matchs()
     clt      = construire_classement()
     rang_row = clt[clt["equipe"]==eq].iloc[0]
@@ -2035,230 +2095,288 @@ def pdf_rapport_complet(eq):
     meq      = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
     n_m      = len(meq) or 1
     j_max    = max(JOURNEES)
+    pb       = analyser_premier_but(eq)
+    de_stats = analyser_dom_ext(eq)
+    rs_data  = analyser_retours_score(eq)
+    mo_data  = analyser_momentum(eq)
+    vt6, nt6, dt6 = analyser_bilan_top6(eq)
+    tot_t6   = vt6+nt6+dt6
+    vd, nd, dd = de_stats["dom"]; ve, ne_, de_ = de_stats["ext"]
+    td = vd+nd+dd or 1; te = ve+ne_+de_ or 1
+
+    elems = []
 
     # ---- HEADER ----
-    _pdf_header(elems, stl, eq, f"D1 Futsal · Analyse Performance · Saison 2025–2026 · J1→J{j_max}")
+    logo_p = LOGOS_DIR / f"{eq}.png"
+    header_data = [[
+        Paragraph(f'<font size="20" color="{coul_hex}"><b>{eq}</b></font><br/>'
+                  f'<font size="9" color="#6B6066">D1 Futsal · Saison 2025–2026 · J1→J{j_max}</font>',
+                  ps("hdr", leading=22)),
+        ""
+    ]]
+    if logo_p.exists():
+        try:
+            logo_img = RLImage(str(logo_p), width=2*cm, height=2*cm)
+            header_data = [[
+                Paragraph(f'<font size="20" color="{coul_hex}"><b>{eq}</b></font><br/>'
+                          f'<font size="9" color="#6B6066">D1 Futsal · Saison 2025–2026 · J1→J{j_max}</font>',
+                          ps("hdr", leading=22)),
+                logo_img
+            ]]
+        except Exception:
+            pass
+
+    t_hdr = Table(header_data, colWidths=[13.5*cm, 3*cm])
+    t_hdr.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("ALIGN", (1,0), (1,0), "RIGHT"),
+        ("LINEBELOW", (0,0), (-1,0), 2, COUL),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+    ]))
+    elems += [t_hdr, Spacer(1, 8)]
 
     # ---- SECTION 01 : VUE D'ENSEMBLE ----
-    elems.append(Paragraph("Section 01 — Vue d'ensemble", titre_sec))
-    elems.append(HRFlowable(width="100%",thickness=0.8,color=coul_rl,spaceAfter=6))
+    elems.append(Paragraph("SECTION 01 — Vue d'ensemble", titre_section))
 
-    data_ov = [
-        ["Points","Buts marqués","Buts encaissés","Taux de victoire"],
-        [str(int(rang_row["Pts"])), str(int(rang_row["BP"])),
-         str(int(rang_row["BC"])), f"{int(rang_row['V'])/n_m*100:.0f}%"],
-        [f"{int(rang_row['Pts'])/n_m:.1f} pts/match",
-         f"{len(dpour)/n_m:.1f} buts/match",
-         f"{len(dcontre)/n_m:.1f} buts/match",
-         f"{int(rang_row['V'])}V · {int(rang_row['N'])}N · {int(rang_row['D'])}D"],
+    # 4 KPIs
+    tv = int(rang_row["V"])/n_m*100
+    kpi_data = [
+        [Paragraph(f'<font color="{coul_hex}"><b>POINTS</b></font>', corps),
+         Paragraph(f'<font color="{coul_hex}"><b>BUTS MARQUÉS</b></font>', corps),
+         Paragraph(f'<font color="{coul_hex}"><b>BUTS ENCAISSÉS</b></font>', corps),
+         Paragraph(f'<font color="{coul_hex}"><b>TAUX DE VICTOIRE</b></font>', corps)],
+        [Paragraph(f'<font size="22" color="{coul_hex}"><b>{int(rang_row["Pts"])}</b></font>', ps("kv",alignment=1)),
+         Paragraph(f'<font size="22" color="{coul_hex}"><b>{int(rang_row["BP"])}</b></font>', ps("kv2",alignment=1)),
+         Paragraph(f'<font size="22" color="{coul_hex}"><b>{int(rang_row["BC"])}</b></font>', ps("kv3",alignment=1)),
+         Paragraph(f'<font size="22" color="{coul_hex}"><b>{tv:.0f}%</b></font>', ps("kv4",alignment=1))],
+        [Paragraph(f'{int(rang_row["Pts"])/n_m:.1f} pts/match', gris_stl),
+         Paragraph(f'{len(dpour)/n_m:.1f} buts/match', gris_stl),
+         Paragraph(f'{len(dcontre)/n_m:.1f} buts/match', gris_stl),
+         Paragraph(f'{int(rang_row["V"])}V · {int(rang_row["N"])}N · {int(rang_row["D"])}D', gris_stl)],
     ]
-    t_ov = Table(data_ov, colWidths=[4*cm,4*cm,4*cm,5*cm])
-    t_ov.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),9),
-        ("FONTNAME",(0,1),(-1,1),"Helvetica-Bold"),("FONTSIZE",(0,1),(-1,1),18),
-        ("TEXTCOLOR",(0,1),(-1,1),coul_rl),
-        ("FONTSIZE",(0,2),(-1,2),8),("TEXTCOLOR",(0,2),(-1,2),colors.grey),
-        ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
-        ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
+    t_kpi = Table(kpi_data, colWidths=[4.1*cm]*4)
+    t_kpi.setStyle(TableStyle([
+        ("ALIGN", (0,0), (-1,-1), "CENTER"), ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("BACKGROUND", (0,0), (-1,0), GRIS),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("GRID", (0,0), (-1,-1), 0.5, BORD),
+        ("ROWBACKGROUNDS", (0,0), (-1,-1), [GRIS, BLANC, GRIS]),
+        ("TOPPADDING", (0,0), (-1,-1), 5), ("BOTTOMPADDING", (0,0), (-1,-1), 5),
     ]))
-    elems += [t_ov, Spacer(1,8)]
+    elems += [t_kpi, Spacer(1, 4)]
 
-    # Position au classement
-    elems.append(_pdf_stat_row("Position au classement", f"{rang}e", coul_hex))
-    vt6,nt6,dt6 = analyser_bilan_top6(eq)
-    tot_t6 = vt6+nt6+dt6
+    # Rang + bilan top 6
+    extra_data = [
+        ["Position au classement", Paragraph(f'<font color="{coul_hex}"><b>{rang}e</b></font>', corps)],
+    ]
     if tot_t6:
-        elems.append(_pdf_stat_row("Bilan vs Top 6",
-            f"{vt6}V · {nt6}N · {dt6}D  ({vt6/tot_t6*100:.0f}% de victoires)",
-            coul_hex))
+        extra_data.append(["Bilan vs Top 6",
+            Paragraph(f'<font color="{coul_hex}"><b>{vt6}V · {nt6}N · {dt6}D  ({vt6/tot_t6*100:.0f}% victoires)</b></font>', corps)])
+    t_extra = Table(extra_data, colWidths=[9*cm, 7.5*cm])
+    t_extra.setStyle(TableStyle([
+        ("FONTSIZE", (0,0), (-1,-1), 8.5), ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ("LINEBELOW", (0,0), (-1,-1), 0.3, BORD),
+    ]))
+    elems += [t_extra, Spacer(1, 6)]
 
     # Fil de la saison
-    elems.append(Spacer(1,8))
-    elems.append(Paragraph("Fil de la saison", sous_sec))
-    fil_data = [["J","Adv.","Score","Rés."]]
-    for _,m in meq.sort_values("journee").iterrows():
-        is_dom=(m["dom"]==eq); adv=m["ext"] if is_dom else m["dom"]
+    elems.append(Paragraph("Fil de la saison", sous_titre))
+    fil_data = [[
+        Paragraph("<b>J</b>", corps), Paragraph("<b>Adversaire</b>", corps),
+        Paragraph("<b>Score</b>", corps), Paragraph("<b>Rés.</b>", corps)
+    ]]
+    for _, m in meq.sort_values("journee").iterrows():
+        is_dom = (m["dom"]==eq)
+        adv = m["ext"] if is_dom else m["dom"]
         sc = f'{m["score_dom"]}–{m["score_ext"]}' if is_dom else f'{m["score_ext"]}–{m["score_dom"]}'
-        loc = "Dom" if is_dom else "Ext"
         r = m["res_dom"] if is_dom else m["res_ext"]
-        fil_data.append([f'J{int(m["journee"])} ({loc})', adv.split()[0], sc, r])
-    t_fil = Table(fil_data, colWidths=[2.5*cm,8.5*cm,2.5*cm,2.5*cm])
-    coul_res_rows = []
-    for i,row in enumerate(fil_data[1:], 1):
-        rc = colors.HexColor(D1_VERT) if row[3]=="V" else(colors.HexColor(D1_OR) if row[3]=="N" else rouge_rl)
-        coul_res_rows.append(("TEXTCOLOR",(3,i),(3,i),rc))
-        coul_res_rows.append(("FONTNAME",(3,i),(3,i),"Helvetica-Bold"))
-    t_fil.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
-        ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
-    ]+coul_res_rows))
-    elems += [t_fil, Spacer(1,6)]
+        loc = "Dom" if is_dom else "Ext"
+        rc = (VERT_RL if r=="V" else (OR_RL if r=="N" else ROUGE_RL))
+        fil_data.append([
+            Paragraph(f'J{int(m["journee"])} ({loc})', corps),
+            Paragraph(nc(adv), corps),
+            Paragraph(sc, corps),
+            Paragraph(f'<font color="{"#27AE60" if r=="V" else ("#C9A24B" if r=="N" else "#C00018")}"><b>{r}</b></font>', corps)
+        ])
+    t_fil = Table(fil_data, colWidths=[2.5*cm, 8.5*cm, 2.5*cm, 3*cm], repeatRows=1)
+    t_fil.setStyle(TableStyle(tbl_style_base() + header_row() + zebra()))
+    elems += [t_fil, Spacer(1, 6)]
 
     # ---- SECTION 02 : ANALYSE TACTIQUE ----
-    elems.append(Paragraph("Section 02 — Analyse Tactique", titre_sec))
-    elems.append(HRFlowable(width="100%",thickness=0.8,color=coul_rl,spaceAfter=6))
+    elems.append(Paragraph("SECTION 02 — Analyse Tactique", titre_section))
 
-    pb = analyser_premier_but(eq)
-    de = analyser_dom_ext(eq)
-    rs = analyser_retours_score(eq)
-    mo = analyser_momentum(eq)
-
-    # Impact premier but
-    elems.append(Paragraph("Impact du premier but", sous_sec))
+    # Impact 1er but + Dom/Ext (2 colonnes)
     m_tot = pb["marque"]["total"] or 1; e_tot = pb["encaisse"]["total"] or 1
-    m_win = pb["marque"]["V"]/m_tot*100; e_win = pb["encaisse"]["V"]/e_tot*100
-    data_pb=[["","Matchs","Victoires","Nuls","Défaites","% Victoires"],
-             ["Marque le 1er but", pb["marque"]["total"], pb["marque"]["V"], pb["marque"]["N"], pb["marque"]["D"], f"{m_win:.0f}%"],
-             ["Encaisse le 1er but", pb["encaisse"]["total"], pb["encaisse"]["V"], pb["encaisse"]["N"], pb["encaisse"]["D"], f"{e_win:.0f}%"]]
-    t_pb=Table(data_pb,colWidths=[5*cm,2*cm,2*cm,2*cm,2*cm,3*cm])
-    t_pb.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
-        ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TEXTCOLOR",(5,1),(5,-1),coul_rl),("FONTNAME",(5,1),(5,-1),"Helvetica-Bold"),
-        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
-    ]))
-    elems += [t_pb, Spacer(1,6)]
+    mw = pb["marque"]["V"]/m_tot*100; ew = pb["encaisse"]["V"]/e_tot*100
 
-    # Dom vs Ext
-    elems.append(Paragraph("Domicile vs Extérieur", sous_sec))
-    vd,nd,dd=de["dom"]; ve,ne,de_=de["ext"]
-    td=vd+nd+dd or 1; te=ve+ne+de_ or 1
-    data_de=[["","V","N","D","% Victoires"],
-             ["Domicile",vd,nd,dd,f"{vd/td*100:.0f}%"],
-             ["Extérieur",ve,ne,de_,f"{ve/te*100:.0f}%"]]
-    t_de=Table(data_de,colWidths=[5*cm,2.5*cm,2.5*cm,2.5*cm,3.5*cm])
-    t_de.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
-        ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TEXTCOLOR",(4,1),(4,-1),coul_rl),("FONTNAME",(4,1),(4,-1),"Helvetica-Bold"),
-        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+    pb_data = [[Paragraph("Impact du premier but", sous_titre), Paragraph("Domicile vs Extérieur", sous_titre)]]
+    pb_inner = [
+        [Paragraph(f'Marque 1er ({pb["marque"]["total"]} matchs)', corps),
+         Paragraph(f'<font color="{coul_hex}" size="16"><b>{mw:.0f}%</b></font>', ps("v1",alignment=1))],
+        [Paragraph(f'{pb["marque"]["V"]}V · {pb["marque"]["N"]}N · {pb["marque"]["D"]}D', gris_stl), ""],
+        [Paragraph(f'Encaisse 1er ({pb["encaisse"]["total"]} matchs)', corps),
+         Paragraph(f'<font color="#C00018" size="16"><b>{ew:.0f}%</b></font>', ps("v2",alignment=1))],
+        [Paragraph(f'{pb["encaisse"]["V"]}V · {pb["encaisse"]["N"]}N · {pb["encaisse"]["D"]}D', gris_stl), ""],
+    ]
+    t_pb_inner = Table(pb_inner, colWidths=[4.5*cm, 2.5*cm])
+    t_pb_inner.setStyle(TableStyle([
+        ("GRID", (0,0),(-1,-1), 0.3, BORD), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),3), ("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ("SPAN",(1,1),(1,1)), ("SPAN",(1,3),(1,3)),
+        ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#F0FFF4")),
+        ("BACKGROUND",(0,2),(-1,2),colors.HexColor("#FFF5F5")),
     ]))
-    elems += [t_de, Spacer(1,6)]
 
-    # Retours au score
-    elems.append(Paragraph("Retours au score", sous_sec))
-    rs_data=[["Scénario","Matchs"],
-             ["Jamais mené",rs["jamais"]],
-             ["Mené → Victoire",rs["mv"]],
-             ["Mené → Nul",rs["mn"]],
-             ["Mené → Défaite",rs["md"]]]
-    t_rs=Table(rs_data,colWidths=[10*cm,6*cm])
-    rs_coul=[(0,colors.HexColor(D1_VERT)),(0,coul_rl),(0,colors.HexColor(D1_OR)),(0,rouge_rl)]
-    rs_style=[]
-    for i,(r_,c_) in enumerate([(rs["jamais"],D1_VERT),(rs["mv"],coul_hex),(rs["mn"],D1_OR),(rs["md"],D1_ROUGE)],1):
-        rs_style.append(("TEXTCOLOR",(1,i),(1,i),colors.HexColor(c_)))
-        rs_style.append(("FONTNAME",(1,i),(1,i),"Helvetica-Bold"))
+    de_inner = [
+        [Paragraph(f'Domicile ({td} matchs)', corps),
+         Paragraph(f'<font color="{coul_hex}" size="16"><b>{vd/td*100:.0f}%</b></font>', ps("v3",alignment=1))],
+        [Paragraph(f'{vd}V · {nd}N · {dd}D', gris_stl), ""],
+        [Paragraph(f'Extérieur ({te} matchs)', corps),
+         Paragraph(f'<font color="{coul_hex}" size="16"><b>{ve/te*100:.0f}%</b></font>', ps("v4",alignment=1))],
+        [Paragraph(f'{ve}V · {ne_}N · {de_}D', gris_stl), ""],
+    ]
+    t_de_inner = Table(de_inner, colWidths=[4.5*cm, 2.5*cm])
+    t_de_inner.setStyle(TableStyle([
+        ("GRID",(0,0),(-1,-1),0.3,BORD), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),3), ("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ("ROWBACKGROUNDS",(0,0),(-1,-1),[BLANC,GRIS,BLANC,GRIS]),
+    ]))
+
+    t_row1 = Table([[t_pb_inner, t_de_inner]], colWidths=[8.2*cm, 8.2*cm])
+    t_row1.setStyle(TableStyle([
+        ("VALIGN",(0,0),(-1,-1),"TOP"),
+        ("LEFTPADDING",(0,0),(-1,-1),0), ("RIGHTPADDING",(0,0),(-1,-1),4),
+    ]))
+    elems += [t_row1, Spacer(1,6)]
+
+    # Retours au score + Momentum (2 colonnes)
+    rs_inner_data = [
+        [Paragraph("Jamais mené", corps),
+         Paragraph(f'<font color="#27AE60"><b>{rs_data["jamais"]}</b></font>', ps("rs",alignment=2)),
+         mini_barre_h(rs_data["jamais"], n_m, 4*cm, coul_fill=D1_VERT)],
+        [Paragraph("Est mené → Victoire", corps),
+         Paragraph(f'<font color="{coul_hex}"><b>{rs_data["mv"]}</b></font>', ps("rs2",alignment=2)),
+         mini_barre_h(rs_data["mv"], n_m, 4*cm, coul_fill=coul_hex)],
+        [Paragraph("Est mené → Nul", corps),
+         Paragraph(f'<font color="#C9A24B"><b>{rs_data["mn"]}</b></font>', ps("rs3",alignment=2)),
+         mini_barre_h(rs_data["mn"], n_m, 4*cm, coul_fill=D1_OR)],
+        [Paragraph("Est mené → Défaite", corps),
+         Paragraph(f'<font color="#C00018"><b>{rs_data["md"]}</b></font>', ps("rs4",alignment=2)),
+         mini_barre_h(rs_data["md"], n_m, 4*cm, coul_fill=D1_ROUGE)],
+    ]
+    t_rs = Table(rs_inner_data, colWidths=[3.5*cm, 1.2*cm, 4*cm])
     t_rs.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
-        ("ALIGN",(1,0),(1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
-    ]+rs_style))
-    elems += [t_rs, Spacer(1,6)]
-
-    # Momentum
-    elems.append(Paragraph("Momentum après un but (minutes moyennes)", sous_sec))
-    mo_data=[["Transition","Minutes moyennes"]]
-    for label, val in mo.items():
-        mo_data.append([label, f"{val} min" if val else "—"])
-    t_mo=Table(mo_data,colWidths=[10*cm,6*cm])
-    t_mo.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
-        ("ALIGN",(1,0),(1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ("GRID",(0,0),(-1,-1),0.3,BORD), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),4), ("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ("ROWBACKGROUNDS",(0,0),(-1,-1),[BLANC,GRIS,BLANC,GRIS]),
     ]))
-    elems += [t_mo, Spacer(1,6)]
+
+    mo_labels = {"Marque → Marque":"#27AE60","Marque → Encaisse":"#C9A24B",
+                 "Encaisse → Marque":coul_hex,"Encaisse → Encaisse":"#C00018"}
+    mo_inner_data = []
+    for label, val in mo_data.items():
+        badge_color = mo_labels.get(label, D1_GRIS)
+        txt = f"{val} min" if val else "—"
+        mo_inner_data.append([
+            Paragraph(label, corps),
+            Paragraph(f'<font color="{badge_color}" size="12"><b>{txt}</b></font>',
+                      ps(f"mo_{label[:3]}", alignment=2))
+        ])
+    t_mo = Table(mo_inner_data, colWidths=[5*cm, 2.7*cm])
+    t_mo.setStyle(TableStyle([
+        ("GRID",(0,0),(-1,-1),0.3,BORD), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
+        ("ROWBACKGROUNDS",(0,0),(-1,-1),[BLANC,GRIS,BLANC,GRIS]),
+    ]))
+
+    rs_header = Paragraph("Retours au score", sous_titre)
+    mo_header = Paragraph("Momentum après un but", sous_titre)
+    t_row2 = Table([[rs_header, mo_header],[t_rs, t_mo]], colWidths=[8.2*cm, 8.2*cm])
+    t_row2.setStyle(TableStyle([
+        ("VALIGN",(0,0),(-1,-1),"TOP"),
+        ("LEFTPADDING",(0,0),(-1,-1),0), ("RIGHTPADDING",(0,0),(-1,-1),4),
+    ]))
+    elems += [t_row2, Spacer(1,6)]
 
     # ---- SECTION 03 : ANALYSE TEMPORELLE ----
-    elems.append(Paragraph("Section 03 — Analyse Temporelle", titre_sec))
-    elems.append(HRFlowable(width="100%",thickness=0.8,color=coul_rl,spaceAfter=6))
-
+    elems.append(Paragraph("SECTION 03 — Analyse Temporelle", titre_section))
     mins_p = dpour["minute"].dropna().astype(int)
     mins_c = dcontre["minute"].dropna().astype(int)
-    tr_p = pd.cut(mins_p,bins=range(0,41,5),labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
-    tr_c = pd.cut(mins_c,bins=range(0,41,5),labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
+    tr_p = pd.cut(mins_p, bins=range(0,41,5), labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
+    tr_c = pd.cut(mins_c, bins=range(0,41,5), labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
     max_tr = max(tr_p.max(), tr_c.max(), 1)
 
-    data_tr=[["Tranche","Buts marqués","","Buts encaissés",""]]
+    tr_data = [[Paragraph("<b>Tranche</b>", corps),
+                Paragraph("<b>Buts marqués</b>", corps), Paragraph("", corps),
+                Paragraph("<b>Buts encaissés</b>", corps), Paragraph("", corps)]]
     for tr in tr_p.index:
-        data_tr.append([str(tr), int(tr_p[tr]), "", int(tr_c[tr]), ""])
-    t_tr=Table(data_tr,colWidths=[2.5*cm,2.5*cm,6*cm,2.5*cm,3*cm])
-
-    tr_style=[]
-    for i in range(1,len(data_tr)):
-        vp=int(tr_p.iloc[i-1]); vc=int(tr_c.iloc[i-1])
-        # Barre marqués
-        w_p=int(vp/max_tr*100*0.6)
-        d_p=Drawing(6*cm*0.85,10)
-        d_p.add(Rect(0,1,6*cm*0.85,8,fillColor=colors.HexColor("#F0E8EA"),strokeColor=None))
-        if vp>0: d_p.add(Rect(0,1,vp/max_tr*6*cm*0.85,8,fillColor=coul_rl,strokeColor=None))
-        # Barre encaissés
-        d_c=Drawing(3*cm*0.85,10)
-        d_c.add(Rect(0,1,3*cm*0.85,8,fillColor=colors.HexColor("#F0E8EA"),strokeColor=None))
-        if vc>0: d_c.add(Rect(0,1,vc/max_tr*3*cm*0.85,8,fillColor=rouge_rl,strokeColor=None))
-        data_tr[i][2]=d_p; data_tr[i][4]=d_c
-
-    t_tr=Table(data_tr,colWidths=[2.5*cm,1.5*cm,7*cm,1.5*cm,4.5*cm])
-    t_tr.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
-        ("ALIGN",(1,0),(1,-1),"CENTER"),("ALIGN",(3,0),(3,-1),"CENTER"),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
-    ]))
+        vp = int(tr_p[tr]); vc = int(tr_c[tr])
+        is_p1 = tr in list(tr_p.index)[:4]
+        cf = coul_hex if is_p1 else D1_ROUGE
+        tr_data.append([
+            Paragraph(str(tr), corps),
+            Paragraph(f'<font color="{coul_hex}"><b>{vp}</b></font>', corps),
+            mini_barre_h(vp, int(max_tr), 6*cm, coul_fill=coul_hex),
+            Paragraph(f'<font color="#C00018"><b>{vc}</b></font>', corps),
+            mini_barre_h(vc, int(max_tr), 3.5*cm, coul_fill=D1_ROUGE),
+        ])
+    t_tr = Table(tr_data, colWidths=[1.8*cm, 1.2*cm, 6*cm, 1.2*cm, 3.5*cm], repeatRows=1)
+    t_tr.setStyle(TableStyle(tbl_style_base() + header_row() + zebra()))
     elems += [t_tr, Spacer(1,6)]
 
-    # ---- SECTION 04 : ANALYSE DES BUTEURS ----
-    elems.append(Paragraph("Section 04 — Analyse des Buteurs", titre_sec))
-    elems.append(HRFlowable(width="100%",thickness=0.8,color=coul_rl,spaceAfter=6))
+    # ---- SECTION 04 : BUTEURS ----
+    elems.append(Paragraph("SECTION 04 — Analyse des Buteurs", titre_section))
     bb = dpour["joueur"].value_counts()
-    total_buts = len(dpour) or 1
-    elems.append(Paragraph(f"Top buteurs — {bb.head(3).sum()} buts sur {total_buts} "
-                            f"pour les 3 premiers ({bb.head(3).sum()/total_buts*100:.0f}%)", gris_stl))
+    total_b = len(dpour) or 1
+    top3_pct = bb.head(3).sum()/total_b*100
+    elems.append(Paragraph(f'Top 3 : {bb.head(3).sum()} buts sur {total_b} ({top3_pct:.0f}%)', gris_stl))
+    elems.append(Spacer(1,4))
     for joueur, nb in bb.head(10).items():
-        pct = nb/total_buts*100
-        elems.append(Paragraph(f"{joueur}  ·  {nb} buts  ({pct:.0f}%)", np_stl))
-        elems.append(_pdf_barre(nb, int(bb.max()), couleur_hex=coul_hex))
+        pct = nb/total_b*100
+        row_data = [[
+            Paragraph(nj(joueur), corps),
+            Paragraph(f'<font color="{coul_hex}"><b>{nb}</b></font>', ps(f"bj",alignment=1)),
+            mini_barre_h(nb, int(bb.max()), 7*cm, coul_fill=coul_hex),
+            Paragraph(f'{pct:.0f}%', gris_stl),
+        ]]
+        t_row = Table(row_data, colWidths=[4.5*cm, 1*cm, 7*cm, 1.5*cm])
+        t_row.setStyle(TableStyle([
+            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+            ("TOPPADDING",(0,0),(-1,-1),2), ("BOTTOMPADDING",(0,0),(-1,-1),2),
+            ("LINEBELOW",(0,0),(-1,-1),0.2,BORD),
+        ]))
+        elems.append(t_row)
+    elems.append(Spacer(1,6))
 
     # ---- SECTION 05 : ORIGINES ----
     if eq in EQUIPES_AVEC_ORIGINE:
-        elems.append(Paragraph("Section 05 — Origines des buts", titre_sec))
-        elems.append(HRFlowable(width="100%",thickness=0.8,color=coul_rl,spaceAfter=6))
+        elems.append(Paragraph("SECTION 05 — Origines des Buts", titre_section))
         oo = dpour.loc[dpour["origine"].notna(),"origine"].value_counts()
         n_r = int(dpour["origine"].notna().sum())
-        elems.append(Paragraph(f"{n_r} buts analysés sur {total_buts}", gris_stl))
+        elems.append(Paragraph(f'{n_r} buts analysés sur {total_b}', gris_stl))
+        elems.append(Spacer(1,4))
         for orig, nb in oo.items():
             pct = nb/n_r*100
-            elems.append(Paragraph(f"{orig}  ·  {nb} buts  ({pct:.0f}%)", np_stl))
-            elems.append(_pdf_barre(nb, int(oo.max()), couleur_hex=coul_hex))
+            row_data = [[
+                Paragraph(orig, corps),
+                Paragraph(f'<font color="{coul_hex}"><b>{nb}</b></font>', ps(f"oo",alignment=1)),
+                mini_barre_h(nb, int(oo.max()), 7*cm, coul_fill=coul_hex),
+                Paragraph(f'{pct:.0f}%', gris_stl),
+            ]]
+            t_row = Table(row_data, colWidths=[4.5*cm, 1*cm, 7*cm, 1.5*cm])
+            t_row.setStyle(TableStyle([
+                ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                ("TOPPADDING",(0,0),(-1,-1),2), ("BOTTOMPADDING",(0,0),(-1,-1),2),
+                ("LINEBELOW",(0,0),(-1,-1),0.2,BORD),
+            ]))
+            elems.append(t_row)
 
-    doc.build(elems); buf.seek(0)
+    doc.build(elems)
+    buf.seek(0)
     return buf
 
 
-# ============================================================================
-# PAGE — ANALYSE TACTIQUE
-# ============================================================================
 if page == "Analyse Tactique":
     st.title("Analyse Tactique")
     eq = sel_equipe(key="eq_tactique")
@@ -2339,20 +2457,6 @@ if page == "Analyse Tactique":
             coul
         ), unsafe_allow_html=True)
         st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
-
-        # graphe dom vs ext clair
-        fig_de_tac = go.Figure(go.Bar(
-            x=["Domicile","Extérieur"],
-            y=[vd/td*100, ve/te*100],
-            marker_color=[coul, hex_to_rgba(coul, 0.55)],
-            text=[f"{vd/td*100:.0f}%", f"{ve/te*100:.0f}%"],
-            textposition="outside", textangle=0,
-            textfont=dict(size=16, color=D1_BLANC, family="Inter"),
-            width=[0.5, 0.5],
-        ))
-        fig_de_tac.update_yaxes(showticklabels=False, range=[0,115])
-        fig_de_tac.update_xaxes(tickfont=dict(size=14, color=D1_BLANC))
-        st.plotly_chart(style_fig(fig_de_tac, 210), use_container_width=True)
 
     st.markdown("---")
 
