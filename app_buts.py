@@ -1240,6 +1240,74 @@ elif page == "Buteurs":
         st.plotly_chart(style_fig(fig_comp, 300), use_container_width=True)
         st.markdown("<p class='note'>Valeurs en % du total de buts du joueur.</p>", unsafe_allow_html=True)
 
+    # ---- PROFIL D'ORIGINE DU BUTEUR ----
+    st.markdown("### Profil de but — type de buts marqués")
+    dj_orig = dj[dj["origine"].notna()]
+    if len(dj_orig) == 0:
+        st.markdown(
+            f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+            f'border-radius:10px;padding:.9rem 1.1rem;color:{D1_GRIS};font-size:.88rem">'
+            f'Origine des buts non disponible pour <b style="color:{D1_BLANC}">{j}</b> — '
+            f'son équipe n\'a pas encore saisi les origines.</div>',
+            unsafe_allow_html=True
+        )
+    else:
+        n_tot_j = len(dj); n_orig_j = len(dj_orig)
+        st.markdown(
+            f'<span style="background:{coul_j};color:white;padding:.15rem .6rem;'
+            f'border-radius:5px;font-weight:600;font-size:.78rem">'
+            f'{n_orig_j}/{n_tot_j} buts analysés</span>',
+            unsafe_allow_html=True
+        )
+        st.markdown("<div style='height:.4rem'></div>", unsafe_allow_html=True)
+        oo_j = dj_orig["origine"].value_counts()
+        cg_orig, cd_orig = st.columns(2)
+        with cg_orig:
+            fig_oj = go.Figure(go.Bar(
+                x=oo_j.values, y=oo_j.index, orientation="h",
+                marker_color=coul_j,
+                text=[f"{v} ({v/n_orig_j*100:.0f}%)" for v in oo_j.values],
+                textposition="outside", textangle=0,
+                textfont=dict(size=14, color=D1_BLANC), cliponaxis=False
+            ))
+            fig_oj.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_oj, max(220, 32*len(oo_j))), use_container_width=True)
+        with cd_orig:
+            # Signature : origine principale + situation principale
+            orig_principale = oo_j.index[0]
+            sit_j = dj["situation"].value_counts()
+            sit_principale = sit_j.index[0] if len(sit_j) else "—"
+            clutch_j = int((dj["minute"] >= 36).sum())
+            minute_fetiche = int(dj["minute"].mode().iloc[0]) if len(dj) else 0
+            st.markdown(
+                f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+                f'border-radius:12px;padding:1rem 1.2rem">'
+                f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
+                f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.8rem">Signature de buteur</div>'
+                f'<div style="margin-bottom:.6rem">'
+                f'<span style="color:{D1_GRIS};font-size:.8rem">Type de but principal</span><br>'
+                f'<b style="color:{coul_j};font-size:1.1rem">{orig_principale}</b>'
+                f'<span style="color:{D1_GRIS};font-size:.8rem"> ({oo_j.iloc[0]} buts, {oo_j.iloc[0]/n_orig_j*100:.0f}%)</span>'
+                f'</div>'
+                f'<div style="margin-bottom:.6rem">'
+                f'<span style="color:{D1_GRIS};font-size:.8rem">Situation favorite</span><br>'
+                f'<b style="color:{D1_BLANC};font-size:1rem">{sit_principale}</b>'
+                f'</div>'
+                f'<div style="margin-bottom:.6rem">'
+                f'<span style="color:{D1_GRIS};font-size:.8rem">Buts clutch (36\'-40\')</span><br>'
+                f'<b style="color:{D1_ROUGE if clutch_j==0 else D1_VERT};font-size:1rem">{clutch_j} buts</b>'
+                f'</div>'
+                f'<div>'
+                f'<span style="color:{D1_GRIS};font-size:.8rem">Minute fétiche</span><br>'
+                f'<b style="color:{D1_BLANC};font-size:1rem">{minute_fetiche}\'</b>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        st.markdown("<p class='note'>Profil basé sur les buts dont l'origine est renseignée. "
+                    "Les données d'origine sont disponibles pour les équipes qui ont saisi "
+                    "leurs données dans le fichier Excel.</p>", unsafe_allow_html=True)
+
     bloc_export(pdf_buteur(j), f"buteur_{j.replace(' ','_')}.pdf",
                 f"Exporter la fiche de {j.split()[0]}")
 
@@ -2540,6 +2608,73 @@ if page == "Fiche équipe":
             cd1.metric("Encaissés P1",vul_p1,f"{vul_p1/tot_enc*100:.0f}%")
             cd2.metric("Encaissés P2",vul_p2,f"{vul_p2/tot_enc*100:.0f}%")
             cd3.metric("Plus vulnérable","1re période" if vul_p1>vul_p2 else "2e période")
+
+            # ---- ORIGINES DES BUTS ENCAISSÉS ----
+            st.markdown("### Par quel type d'action encaissent-ils ?")
+            dc_orig = dcontre[dcontre["origine"].notna()]
+            n_enc_tot = len(dcontre); n_enc_orig = len(dc_orig)
+            if n_enc_orig == 0:
+                st.markdown(
+                    f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+                    f'border-radius:10px;padding:.8rem 1rem;color:{D1_GRIS};font-size:.85rem">'
+                    f'Origines des buts encaissés non disponibles — les équipes qui ont '
+                    f'marqué contre <b style="color:{D1_BLANC}">{nc(eq)}</b> n\'ont pas encore '
+                    f'toutes saisi leurs données d\'origine.</div>',
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    f'<span style="background:{D1_ROUGE};color:white;padding:.15rem .6rem;'
+                    f'border-radius:5px;font-weight:600;font-size:.78rem">'
+                    f'{n_enc_orig}/{n_enc_tot} buts encaissés analysés</span>',
+                    unsafe_allow_html=True
+                )
+                st.markdown("<div style='height:.4rem'></div>", unsafe_allow_html=True)
+                oo_enc = dc_orig["origine"].value_counts()
+                cg_enc, cd_enc = st.columns(2)
+                with cg_enc:
+                    fig_enc = go.Figure(go.Bar(
+                        x=oo_enc.values, y=oo_enc.index, orientation="h",
+                        marker_color=D1_ROUGE,
+                        text=[f"{v} ({v/n_enc_orig*100:.0f}%)" for v in oo_enc.values],
+                        textposition="outside", textangle=0,
+                        textfont=dict(size=13, color=D1_BLANC), cliponaxis=False
+                    ))
+                    fig_enc.update_yaxes(autorange="reversed")
+                    st.plotly_chart(style_fig(fig_enc, max(240, 32*len(oo_enc))),
+                                    use_container_width=True)
+                with cd_enc:
+                    # Point faible principal
+                    orig_faible = oo_enc.index[0]
+                    pct_faible = oo_enc.iloc[0]/n_enc_orig*100
+                    st.markdown(
+                        f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+                        f'border-left:4px solid {D1_ROUGE};border-radius:12px;padding:1rem 1.2rem">'
+                        f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
+                        f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.8rem">Point faible principal</div>'
+                        f'<div style="color:{D1_ROUGE};font-size:1.2rem;font-weight:800">{orig_faible}</div>'
+                        f'<div style="color:{D1_GRIS};font-size:.85rem;margin-top:.3rem">'
+                        f'{oo_enc.iloc[0]} buts encaissés sur ce type ({pct_faible:.0f}%)</div>'
+                        f'<hr style="border:none;border-top:1px solid {D1_BORDEAUX_2};margin:.7rem 0">'
+                        f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
+                        f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.5rem">Répartition</div>',
+                        unsafe_allow_html=True
+                    )
+                    for orig, n_o in oo_enc.items():
+                        pct = n_o/n_enc_orig*100
+                        st.markdown(
+                            f'<div style="margin:.2rem 0;font-size:.82rem">'
+                            f'<div style="display:flex;justify-content:space-between;margin-bottom:.15rem">'
+                            f'<span>{orig}</span><b style="color:{D1_ROUGE}">{n_o}</b></div>'
+                            f'<div style="background:rgba(255,255,255,.06);border-radius:3px;height:5px">'
+                            f'<div style="width:{pct:.0f}%;background:{D1_ROUGE};height:5px;border-radius:3px"></div>'
+                            f'</div></div>',
+                            unsafe_allow_html=True
+                        )
+                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown(f"<p class='note'>Basé sur les buts marqués contre {nc(eq)} "
+                            f"dont l'origine a été renseignée par l'équipe marquante.</p>",
+                            unsafe_allow_html=True)
 
     # ---- TAB 4 : ORIGINES ----
     with tab4:
