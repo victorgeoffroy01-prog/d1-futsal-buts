@@ -105,7 +105,14 @@ div[data-baseweb="select"] *{{color:{D1_BLANC}!important}}
 .stDownloadButton>button{{background:{D1_ROUGE}!important;color:white!important;border:none!important;
     border-radius:7px!important;font-weight:600!important;font-size:.8rem!important;padding:.3rem .85rem!important}}
 .stDownloadButton>button:hover{{background:{D1_ROUGE_CLAIR}!important}}
-.stDataFrame{{border-radius:10px;overflow:hidden}}
+.stTabs [data-baseweb="tab-list"]{{gap:4px}}
+.stTabs [data-baseweb="tab"]{{
+    font-size:1rem!important;font-weight:600!important;
+    padding:.5rem 1.1rem!important;border-radius:8px 8px 0 0!important;
+    color:{D1_GRIS}!important}}
+.stTabs [aria-selected="true"]{{
+    color:{D1_BLANC}!important;background:rgba(192,0,24,.15)!important;
+    border-bottom:2px solid {D1_ROUGE}!important}}
 </style>
 """
 
@@ -730,14 +737,9 @@ if page == "Accueil":
 
     st.markdown("### Répartition 1re / 2e période")
     p1 = int((df["periode"]==1).sum()); p2 = int((df["periode"]==2).sum())
-    fig2 = go.Figure(go.Bar(
-        x=["1re période","2e période"], y=[p1,p2],
-        marker_color=[D1_ROUGE, D1_BORDEAUX_2],
-        text=[f"{p1}  ({p1/(p1+p2)*100:.0f}%)", f"{p2}  ({p2/(p1+p2)*100:.0f}%)"],
-        textposition="outside", textangle=0, width=[0.4,0.4]
-    ))
-    fig2.update_yaxes(showticklabels=False)
-    st.plotly_chart(style_fig(fig2, 250), use_container_width=True)
+    cp1, cp2 = st.columns(2)
+    cp1.metric("1re période", p1, f"{p1/(p1+p2)*100:.0f}% des buts")
+    cp2.metric("2e période", p2, f"{p2/(p1+p2)*100:.0f}% des buts")
 
     st.markdown("### Domicile vs Extérieur — vue championnat")
     matchs_acc = construire_matchs()
