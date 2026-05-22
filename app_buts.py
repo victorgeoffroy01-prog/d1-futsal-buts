@@ -754,7 +754,7 @@ if page == "Accueil":
     # 2 traces (dom + ext) avec noms courts sur l'axe X
     fig_de = go.Figure()
     fig_de.add_trace(go.Bar(
-        name="Domicile",
+        name="% Victoires Domicile",
         x=ncs(de_df["eq"].tolist()),
         y=de_df["pct_dom"].values,
         marker_color=[COULEUR_EQUIPE.get(e, D1_ROUGE) for e in de_df["eq"]],
@@ -763,7 +763,7 @@ if page == "Accueil":
         textfont=dict(size=14, color=D1_BLANC),
     ))
     fig_de.add_trace(go.Bar(
-        name="Extérieur",
+        name="% Victoires Extérieur",
         x=ncs(de_df["eq"].tolist()),
         y=de_df["pct_ext"].values,
         marker_color=[hex_to_rgba(COULEUR_EQUIPE.get(e, D1_ROUGE), 0.5) for e in de_df["eq"]],
@@ -772,9 +772,11 @@ if page == "Accueil":
         textfont=dict(size=14, color=D1_BLANC),
     ))
     fig_de.update_layout(barmode="group", bargap=0.2, bargroupgap=0.08)
-    fig_de.update_yaxes(showticklabels=False, range=[0,120])
-    st.plotly_chart(style_fig(fig_de, 340), use_container_width=True)
-    st.markdown("<p class='note'>Barre pleine = domicile · Barre transparente = extérieur</p>",
+    fig_de.update_yaxes(showticklabels=False, range=[0,120],
+                        title=dict(text="% de victoires", font=dict(size=12, color=D1_GRIS)))
+    st.plotly_chart(style_fig(fig_de, 340, "% de victoires — Domicile vs Extérieur par équipe"),
+                    use_container_width=True)
+    st.markdown("<p class='note'>Barre pleine = domicile · Barre semi-transparente = extérieur</p>",
                 unsafe_allow_html=True)
 
     st.markdown("### Heatmap — buts par équipe et par journée")
@@ -2405,59 +2407,61 @@ if page == "Analyse Tactique":
     rs = analyser_retours_score(eq)
     mo = analyser_momentum(eq)
 
-    # ---- LIGNE 1 : Impact premier but + Dom/Ext ----
-    c1, c2 = st.columns(2)
-
-    with c1:
+    # ---- TITRES DE SECTION sur 2 colonnes ----
+    ct1, ct2 = st.columns(2)
+    with ct1:
         st.markdown("### Impact du premier but")
-        m_tot = pb["marque"]["total"] or 1
-        e_tot = pb["encaisse"]["total"] or 1
-        m_win = pb["marque"]["V"]/m_tot*100
-        e_win = pb["encaisse"]["V"]/e_tot*100
-        # Sous-titre contextuel
-        if m_win > e_win:
-            diff = m_win - e_win
-            msg = f"<b style='color:{D1_BLANC}'>{diff:.0f}%</b> de plus en marquant le premier but"
-        else:
-            msg = "Reste performante même en encaissant le premier but"
-        st.markdown(f'<div style="background:{D1_CARTE};border-left:3px solid {coul};'
-                    f'border-radius:8px;padding:.5rem .8rem;margin-bottom:.7rem;'
-                    f'font-size:.84rem;color:{D1_GRIS}">{msg}</div>',
-                    unsafe_allow_html=True)
-        ca, cb = st.columns(2)
-        ca.markdown(_carte_stat(
-            f"Marque 1er ({pb['marque']['total']} matchs)",
-            f"{m_win:.0f}%",
-            f"{pb['marque']['V']}V · {pb['marque']['N']}N · {pb['marque']['D']}D",
-            D1_VERT if m_win >= 70 else D1_OR
-        ), unsafe_allow_html=True)
-        cb.markdown(_carte_stat(
-            f"Encaisse 1er ({pb['encaisse']['total']} matchs)",
-            f"{e_win:.0f}%",
-            f"{pb['encaisse']['V']}V · {pb['encaisse']['N']}N · {pb['encaisse']['D']}D",
-            D1_OR if e_win >= 50 else D1_ROUGE
-        ), unsafe_allow_html=True)
-
-    with c2:
+    with ct2:
         st.markdown("### Domicile vs Extérieur")
-        vd, nd, dd = de_stats["dom"]
-        ve, ne, de_ = de_stats["ext"]
-        td = vd+nd+dd or 1; te = ve+ne+de_ or 1
-        ca, cb = st.columns(2)
-        ca.markdown(_carte_stat(
-            f"Domicile ({td} matchs)",
-            f"{vd/td*100:.0f}%",
-            f"{vd}V · {nd}N · {dd}D",
-            coul
-        ), unsafe_allow_html=True)
-        cb.markdown(_carte_stat(
-            f"Extérieur ({te} matchs)",
-            f"{ve/te*100:.0f}%",
-            f"{ve}V · {ne}N · {de_}D",
-            coul
-        ), unsafe_allow_html=True)
-        st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
 
+    m_tot = pb["marque"]["total"] or 1
+    e_tot = pb["encaisse"]["total"] or 1
+    m_win = pb["marque"]["V"]/m_tot*100
+    e_win = pb["encaisse"]["V"]/e_tot*100
+    vd, nd, dd = de_stats["dom"]
+    ve, ne, de_ = de_stats["ext"]
+    td = vd+nd+dd or 1; te = ve+ne+de_ or 1
+
+    # Message contextuel sous le titre gauche
+    if m_win > e_win:
+        diff = m_win - e_win
+        msg = f"<b style='color:{D1_BLANC}'>{diff:.0f}%</b> de plus en marquant le premier but"
+    else:
+        msg = "Reste performante même en encaissant le premier but"
+    with ct1:
+        st.markdown(f'<div style="background:{D1_CARTE};border-left:3px solid {coul};'
+                    f'border-radius:8px;padding:.45rem .75rem;margin-bottom:.5rem;'
+                    f'font-size:.82rem;color:{D1_GRIS}">{msg}</div>',
+                    unsafe_allow_html=True)
+
+    # ---- 4 CARTES ALIGNÉES sur 4 colonnes égales ----
+    ca, cb, cc, cd_col = st.columns(4)
+    ca.markdown(_carte_stat(
+        f"Marque 1er ({pb['marque']['total']} matchs)",
+        f"{m_win:.0f}%",
+        f"{pb['marque']['V']}V · {pb['marque']['N']}N · {pb['marque']['D']}D",
+        D1_VERT if m_win >= 70 else D1_OR
+    ), unsafe_allow_html=True)
+    cb.markdown(_carte_stat(
+        f"Encaisse 1er ({pb['encaisse']['total']} matchs)",
+        f"{e_win:.0f}%",
+        f"{pb['encaisse']['V']}V · {pb['encaisse']['N']}N · {pb['encaisse']['D']}D",
+        D1_OR if e_win >= 50 else D1_ROUGE
+    ), unsafe_allow_html=True)
+    cc.markdown(_carte_stat(
+        f"Domicile ({td} matchs)",
+        f"{vd/td*100:.0f}%",
+        f"{vd}V · {nd}N · {dd}D",
+        coul
+    ), unsafe_allow_html=True)
+    cd_col.markdown(_carte_stat(
+        f"Extérieur ({te} matchs)",
+        f"{ve/te*100:.0f}%",
+        f"{ve}V · {ne}N · {de_}D",
+        coul
+    ), unsafe_allow_html=True)
+
+    st.markdown("<div style='height:.3rem'></div>", unsafe_allow_html=True)
     st.markdown("---")
 
     # ---- LIGNE 2 : Retours au score + Momentum ----
@@ -2519,18 +2523,28 @@ if page == "Analyse Tactique":
                 unsafe_allow_html=True
             )
 
-        # Bilan vs Top 6
-        st.markdown("### Bilan vs Top 6")
-        vt6, nt6, dt6 = analyser_bilan_top6(eq)
-        tot_t6 = vt6+nt6+dt6
-        if tot_t6:
-            ca, cb, cc = st.columns(3)
-            ca.metric("V", vt6); cb.metric("N", nt6); cc.metric("D", dt6)
-            st.markdown(f'<p style="color:{D1_GRIS};font-size:.78rem">'
-                        f'{vt6/tot_t6*100:.0f}% de victoires sur {tot_t6} matchs contre le Top 6</p>',
-                        unsafe_allow_html=True)
-        else:
-            st.info("Pas encore de matchs contre le Top 6.")
+    # ---- BILAN VS TOP 6 — PLEINE LARGEUR sous les 2 colonnes ----
+    st.markdown("---")
+    st.markdown("### Bilan vs Top 6")
+    vt6, nt6, dt6 = analyser_bilan_top6(eq)
+    tot_t6 = vt6+nt6+dt6
+    if tot_t6:
+        cv, cn, cd2, ce = st.columns([1,1,1,5])
+        cv.metric("Victoires", vt6)
+        cn.metric("Nuls", nt6)
+        cd2.metric("Défaites", dt6)
+        ce.markdown(
+            f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};border-radius:10px;'
+            f'padding:.7rem 1rem;height:100%;display:flex;flex-direction:column;justify-content:center">'
+            f'<div style="font-size:1.2rem;font-weight:800;color:{coul}">{vt6/tot_t6*100:.0f}%</div>'
+            f'<div style="font-size:.8rem;color:{D1_GRIS}">de victoires sur {tot_t6} matchs contre le Top 6</div>'
+            f'<div style="background:rgba(255,255,255,.06);border-radius:4px;height:6px;margin-top:.4rem;overflow:hidden">'
+            f'<div style="width:{vt6/tot_t6*100:.0f}%;background:{coul};height:6px;border-radius:4px"></div>'
+            f'</div></div>',
+            unsafe_allow_html=True
+        )
+    else:
+        st.info("Pas encore de matchs contre le Top 6.")
 
     bloc_export(pdf_rapport_complet(eq),
                 f"rapport_{eq[:20].replace(' ','_')}.pdf",
