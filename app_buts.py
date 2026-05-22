@@ -82,15 +82,16 @@ h3{{font-size:.98rem!important;margin-top:1rem!important;margin-bottom:.25rem!im
     border-left:3px solid {D1_ROUGE};padding-left:.5rem}}
 p,label,span,div{{color:{D1_BLANC}}}
 [data-testid="stSidebar"]{{background:{D1_BORDEAUX};border-right:1px solid {D1_BORDEAUX_2};
-    min-width:215px!important;max-width:215px!important}}
+    min-width:255px!important;max-width:255px!important}}
 [data-testid="stSidebar"] *{{color:{D1_BLANC}!important}}
-.nav-cat{{font-size:.66rem;font-weight:800;letter-spacing:1px;color:{D1_OR}!important;
-    text-transform:uppercase;margin:.7rem 0 .25rem .2rem;opacity:.85}}
+.nav-cat{{font-size:.64rem;font-weight:800;letter-spacing:.8px;color:{D1_OR}!important;
+    text-transform:uppercase;margin:.65rem 0 .18rem .2rem;opacity:.85}}
 [data-testid="stSidebar"] .stButton>button{{
-    text-align:left;justify-content:flex-start;
+    text-align:left;justify-content:flex-start;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;width:100%;
     background:transparent;border:none;color:{D1_BLANC}!important;
-    font-size:.86rem;font-weight:500;padding:.32rem .55rem;border-radius:6px;
-    margin:.04rem 0;transition:background .1s;box-shadow:none!important}}
+    font-size:.84rem;font-weight:500;padding:.3rem .55rem;border-radius:6px;
+    margin:.03rem 0;transition:background .1s;box-shadow:none!important}}
 [data-testid="stSidebar"] .stButton>button:hover{{background:rgba(255,255,255,.1)!important}}
 [data-testid="stSidebar"] .stButton>button[kind="primary"]{{
     background:{D1_ROUGE}!important;color:white!important;font-weight:700}}
@@ -306,12 +307,14 @@ def reconstruire_score(df_match, dom, ext):
 # ============================================================================
 NAV = {
     "VUE D'ENSEMBLE": [("🏠", "Accueil"), ("🏆", "Classement")],
-    "ÉQUIPES":        [("🛡", "Vue équipe"), ("🔭", "Scouting adverse"),
+    "ÉQUIPES":        [("🛡", "Vue équipe"), ("📐", "Analyse Tactique"),
+                       ("🔭", "Scouting adverse"),
                        ("⚔", "Confrontations"), ("🎯", "Tactique / Origines")],
-    "JOUEURS":        [("👟", "Classement buteurs")],
+    "JOUEURS":        [("👟", "Buteurs")],
     "MATCHS":         [("⚽", "Fiche match")],
     "ANALYSE":        [("⏱", "Profil temporel"), ("📊", "Dynamique de score"),
                        ("📈", "Analyse avancée")],
+    "RAPPORT":        [("📋", "Rapport équipe")],
 }
 
 if "page" not in st.session_state:
@@ -700,7 +703,38 @@ if page == "Accueil":
 # ============================================================================
 elif page == "Classement":
     st.title("Classement D1 Futsal")
-    clt = construire_classement()
+
+    # Filtre journée
+    j_max = max(JOURNEES)
+    j_filtre = st.slider("Classement après la journée", min_value=min(JOURNEES),
+                         max_value=j_max, value=j_max, step=1,
+                         format="J%d")
+    df_filtre = df[df["journee"] <= j_filtre]
+
+    @st.cache_data
+    def construire_classement_filtre(j_max_filtre):
+        matchs_f = construire_matchs()
+        matchs_f = matchs_f[matchs_f["journee"] <= j_max_filtre]
+        rows = []
+        for eq in EQUIPES:
+            jdom = list(matchs_f[matchs_f["dom"]==eq][["journee","res_dom"]].sort_values("journee").itertuples(index=False))
+            jext = list(matchs_f[matchs_f["ext"]==eq][["journee","res_ext"]].sort_values("journee").itertuples(index=False))
+            hist = sorted([(r.journee, r.res_dom) for r in jdom]+[(r.journee, r.res_ext) for r in jext])
+            res  = [r for _,r in hist]
+            v=res.count("V"); n=res.count("N"); d=res.count("D")
+            df_eq = df.loc[df["journee"] <= j_max_filtre]
+            bp=int(df_eq.loc[df_eq["equipe_marque"]==eq].shape[0])
+            bc=int(df_eq.loc[df_eq["equipe_encaisse"]==eq].shape[0])
+            rows.append({"equipe":eq,"J":len(res),"V":v,"N":n,"D":d,
+                         "Pts":3*v+n,"BP":bp,"BC":bc,"Diff":bp-bc,"forme":res})
+        return pd.DataFrame(rows).sort_values("Pts",ascending=False).reset_index(drop=True)
+
+    clt = construire_classement_filtre(j_filtre)
+    if j_filtre < j_max:
+        st.markdown(f'<div style="display:inline-block;background:{D1_ROUGE};color:white;'
+                    f'padding:.2rem .7rem;border-radius:5px;font-size:.8rem;font-weight:700;margin-bottom:.6rem">'
+                    f'Affichage après J{j_filtre} — {len(df_filtre)} buts comptabilisés</div>',
+                    unsafe_allow_html=True)
 
     # Ligne d'en-tête
     head_html = (
@@ -747,23 +781,26 @@ elif page == "Classement":
 
     st.markdown("### Évolution des points (cumulés)")
     evo = evolution_classement()
+    # Ne montrer que jusqu'à la journée filtrée
+    evo_f = evo[evo["journee"] <= j_filtre]
+    journees_affichees = [j for j in JOURNEES if j <= j_filtre]
     fig = go.Figure()
     for eq in clt["equipe"].tolist():
-        sub = evo[evo["equipe"]==eq].sort_values("journee")
+        sub = evo_f[evo_f["equipe"]==eq].sort_values("journee")
         coul = COULEUR_EQUIPE.get(eq, D1_ROUGE)
         fig.add_trace(go.Scatter(
             x=sub["journee"], y=sub["pts"], mode="lines+markers",
             name=eq.split()[0], line=dict(color=coul, width=2.5), marker=dict(size=4),
             hovertemplate=f"<b>{eq}</b><br>J%{{x}} → %{{y}} pts<extra></extra>"
         ))
-    fig.update_xaxes(tickvals=JOURNEES, ticktext=[f"J{j}" for j in JOURNEES])
+    fig.update_xaxes(tickvals=journees_affichees, ticktext=[f"J{j}" for j in journees_affichees])
     st.plotly_chart(style_fig(fig, 440), use_container_width=True)
 
     tab_exp = clt[["equipe","J","V","N","D","Pts","BP","BC","Diff"]].copy()
     tab_exp.columns = ["Équipe","J","V","N","D","Pts","BP","BC","Diff"]
-    bloc_export(pdf_tableau("Classement D1 Futsal", f"Journée {max(JOURNEES)}", tab_exp),
-                f"classement_D1_J{max(JOURNEES)}.pdf", "Exporter le classement",
-                csv_df=tab_exp, csv_nom="classement_d1.csv")
+    bloc_export(pdf_tableau("Classement D1 Futsal", f"Journée {j_filtre}", tab_exp),
+                f"classement_D1_J{j_filtre}.pdf", "Exporter le classement",
+                csv_df=tab_exp, csv_nom=f"classement_d1_J{j_filtre}.csv")
 
 # ============================================================================
 # PAGE — FICHE MATCH
@@ -892,7 +929,7 @@ elif page == "Fiche match":
 # ============================================================================
 # PAGE — CLASSEMENT BUTEURS
 # ============================================================================
-elif page == "Classement buteurs":
+elif page == "Buteurs":
     st.title("Classement des buteurs")
     eq = st.selectbox("Filtrer par équipe", ["Toutes"]+EQUIPES)
     d  = df if eq=="Toutes" else df[df["equipe_marque"]==eq]
@@ -1658,3 +1695,597 @@ elif page == "Analyse avancée":
                     "Solidité déf. = inversement proportionnelle aux buts encaissés/match.</p>",
                     unsafe_allow_html=True)
 
+
+# ============================================================================
+# FONCTIONS D'ANALYSE TACTIQUE
+# ============================================================================
+
+def _get_matchs():
+    return construire_matchs()
+
+def analyser_premier_but(eq):
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    res = {"marque":{"V":0,"N":0,"D":0,"total":0},
+           "encaisse":{"V":0,"N":0,"D":0,"total":0}}
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
+                (df["equipe_exterieure"]==m["ext"])]
+        if len(dm)==0: continue
+        first = dm.sort_values(["periode","minute"]).iloc[0]
+        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
+        cle = "marque" if first["equipe_marque"]==eq else "encaisse"
+        res[cle][r] += 1; res[cle]["total"] += 1
+    return res
+
+def analyser_dom_ext(eq):
+    matchs = _get_matchs()
+    dom_m = matchs[matchs["dom"]==eq]
+    ext_m = matchs[matchs["ext"]==eq]
+    vd=int((dom_m["res_dom"]=="V").sum()); nd=int((dom_m["res_dom"]=="N").sum()); dd=int((dom_m["res_dom"]=="D").sum())
+    ve=int((ext_m["res_ext"]=="V").sum()); ne=int((ext_m["res_ext"]=="N").sum()); de=int((ext_m["res_ext"]=="D").sum())
+    return {"dom":(vd,nd,dd),"ext":(ve,ne,de)}
+
+def analyser_retours_score(eq):
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    jamais=0; mv=0; mn=0; md=0
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
+                (df["equipe_exterieure"]==m["ext"])]
+        goals = dm.sort_values(["periode","minute"])
+        is_dom = (m["dom"]==eq)
+        was_trailing = False; sd=0; se=0
+        for _,b in goals.iterrows():
+            if b["equipe_marque"]==m["dom"]: sd+=1
+            else: se+=1
+            seq = sd if is_dom else se
+            saq = se if is_dom else sd
+            if seq < saq: was_trailing=True; break
+        r = m["res_dom"] if is_dom else m["res_ext"]
+        if not was_trailing: jamais+=1
+        elif r=="V": mv+=1
+        elif r=="N": mn+=1
+        else: md+=1
+    return {"jamais":jamais,"mv":mv,"mn":mn,"md":md}
+
+def analyser_momentum(eq):
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    trans = {"MM":[],"ME":[],"EM":[],"EE":[]}
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
+                (df["equipe_exterieure"]==m["ext"])]
+        if len(dm)<2: continue
+        goals = dm.sort_values(["periode","minute"])
+        mins = goals["minute"].values; teams = goals["equipe_marque"].values
+        for i in range(len(goals)-1):
+            delta = max(1, int(mins[i+1])-int(mins[i]))
+            t1="M" if teams[i]==eq else "E"
+            t2="M" if teams[i+1]==eq else "E"
+            trans[t1+t2].append(delta)
+    labels={"MM":"Marque → Marque","ME":"Marque → Encaisse",
+            "EM":"Encaisse → Marque","EE":"Encaisse → Encaisse"}
+    return {labels[k]: (round(sum(v)/len(v)) if v else None) for k,v in trans.items()}
+
+def analyser_bilan_top6(eq):
+    matchs = _get_matchs()
+    clt = construire_classement()
+    top6 = [e for e in clt.head(6)["equipe"].tolist() if e != eq]
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    bvt = meq[(meq["dom"].isin(top6))|(meq["ext"].isin(top6))]
+    v=0; n=0; d=0
+    for _,m in bvt.iterrows():
+        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
+        if r=="V": v+=1
+        elif r=="N": n+=1
+        else: d+=1
+    return v,n,d
+
+def _carte_stat(titre, valeur_principale, sous_texte=None, couleur=None):
+    """Carte métrique stylisée pour l'analyse tactique."""
+    c = couleur or D1_ROUGE
+    html = (
+        f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+        f'border-top:3px solid {c};border-radius:12px;padding:1rem 1.2rem;height:100%">'
+        f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.5rem">{titre}</div>'
+        f'<div style="font-size:2rem;font-weight:900;color:{c};line-height:1">{valeur_principale}</div>'
+    )
+    if sous_texte:
+        html += f'<div style="font-size:.8rem;color:{D1_GRIS};margin-top:.3rem">{sous_texte}</div>'
+    html += '</div>'
+    return html
+
+
+# ============================================================================
+# PDF RAPPORT COMPLET
+# ============================================================================
+def pdf_rapport_complet(eq):
+    """PDF complet type rapport de performance, comme le document Laval."""
+    from reportlab.platypus import PageBreak
+    buf  = BytesIO()
+    doc  = SimpleDocTemplate(buf, pagesize=A4,
+                              topMargin=1.2*cm, bottomMargin=1.5*cm,
+                              leftMargin=1.8*cm, rightMargin=1.8*cm)
+    stl  = getSampleStyleSheet()
+    elems= []
+    coul_hex = COULEUR_EQUIPE.get(eq, D1_ROUGE)
+    coul_rl  = colors.HexColor(coul_hex)
+    rouge_rl = colors.HexColor(D1_ROUGE)
+    np_stl = ParagraphStyle("np",parent=stl["Normal"],fontSize=8.5,spaceBefore=1,spaceAfter=1)
+    gris_stl = ParagraphStyle("gr",parent=stl["Normal"],fontSize=8,
+                               textColor=colors.grey,spaceBefore=1,spaceAfter=1)
+    titre_sec = ParagraphStyle("ts",parent=stl["Normal"],textColor=coul_rl,
+                                fontSize=12,fontName="Helvetica-Bold",
+                                spaceBefore=14,spaceAfter=6)
+    sous_sec  = ParagraphStyle("ss",parent=stl["Normal"],textColor=colors.HexColor(D1_BLANC[:7]),
+                                fontSize=10,fontName="Helvetica-Bold",
+                                spaceBefore=8,spaceAfter=4)
+
+    matchs   = _get_matchs()
+    clt      = construire_classement()
+    rang_row = clt[clt["equipe"]==eq].iloc[0]
+    rang     = clt[clt["equipe"]==eq].index[0]+1
+    dpour    = df[df["equipe_marque"]==eq]
+    dcontre  = df[df["equipe_encaisse"]==eq]
+    meq      = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    n_m      = len(meq) or 1
+    j_max    = max(JOURNEES)
+
+    # ---- HEADER ----
+    _pdf_header(elems, stl, eq, f"D1 Futsal · Analyse Performance · Saison 2025–2026 · J1→J{j_max}")
+
+    # ---- SECTION 01 : VUE D'ENSEMBLE ----
+    elems.append(Paragraph("Section 01 — Vue d'ensemble", titre_sec))
+    elems.append(HRFlowable(width="100%",thickness=0.8,color=coul_rl,spaceAfter=6))
+
+    data_ov = [
+        ["Points","Buts marqués","Buts encaissés","Taux de victoire"],
+        [str(int(rang_row["Pts"])), str(int(rang_row["BP"])),
+         str(int(rang_row["BC"])), f"{int(rang_row['V'])/n_m*100:.0f}%"],
+        [f"{int(rang_row['Pts'])/n_m:.1f} pts/match",
+         f"{len(dpour)/n_m:.1f} buts/match",
+         f"{len(dcontre)/n_m:.1f} buts/match",
+         f"{int(rang_row['V'])}V · {int(rang_row['N'])}N · {int(rang_row['D'])}D"],
+    ]
+    t_ov = Table(data_ov, colWidths=[4*cm,4*cm,4*cm,5*cm])
+    t_ov.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),9),
+        ("FONTNAME",(0,1),(-1,1),"Helvetica-Bold"),("FONTSIZE",(0,1),(-1,1),18),
+        ("TEXTCOLOR",(0,1),(-1,1),coul_rl),
+        ("FONTSIZE",(0,2),(-1,2),8),("TEXTCOLOR",(0,2),(-1,2),colors.grey),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
+        ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
+    ]))
+    elems += [t_ov, Spacer(1,8)]
+
+    # Position au classement
+    elems.append(_pdf_stat_row("Position au classement", f"{rang}e", coul_hex))
+    vt6,nt6,dt6 = analyser_bilan_top6(eq)
+    tot_t6 = vt6+nt6+dt6
+    if tot_t6:
+        elems.append(_pdf_stat_row("Bilan vs Top 6",
+            f"{vt6}V · {nt6}N · {dt6}D  ({vt6/tot_t6*100:.0f}% de victoires)",
+            coul_hex))
+
+    # Fil de la saison
+    elems.append(Spacer(1,8))
+    elems.append(Paragraph("Fil de la saison", sous_sec))
+    fil_data = [["J","Adv.","Score","Rés."]]
+    for _,m in meq.sort_values("journee").iterrows():
+        is_dom=(m["dom"]==eq); adv=m["ext"] if is_dom else m["dom"]
+        sc = f'{m["score_dom"]}–{m["score_ext"]}' if is_dom else f'{m["score_ext"]}–{m["score_dom"]}'
+        loc = "Dom" if is_dom else "Ext"
+        r = m["res_dom"] if is_dom else m["res_ext"]
+        fil_data.append([f'J{int(m["journee"])} ({loc})', adv.split()[0], sc, r])
+    t_fil = Table(fil_data, colWidths=[2.5*cm,8.5*cm,2.5*cm,2.5*cm])
+    coul_res_rows = []
+    for i,row in enumerate(fil_data[1:], 1):
+        rc = colors.HexColor(D1_VERT) if row[3]=="V" else(colors.HexColor(D1_OR) if row[3]=="N" else rouge_rl)
+        coul_res_rows.append(("TEXTCOLOR",(3,i),(3,i),rc))
+        coul_res_rows.append(("FONTNAME",(3,i),(3,i),"Helvetica-Bold"))
+    t_fil.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+    ]+coul_res_rows))
+    elems += [t_fil, Spacer(1,6)]
+
+    # ---- SECTION 02 : ANALYSE TACTIQUE ----
+    elems.append(Paragraph("Section 02 — Analyse Tactique", titre_sec))
+    elems.append(HRFlowable(width="100%",thickness=0.8,color=coul_rl,spaceAfter=6))
+
+    pb = analyser_premier_but(eq)
+    de = analyser_dom_ext(eq)
+    rs = analyser_retours_score(eq)
+    mo = analyser_momentum(eq)
+
+    # Impact premier but
+    elems.append(Paragraph("Impact du premier but", sous_sec))
+    m_tot = pb["marque"]["total"] or 1; e_tot = pb["encaisse"]["total"] or 1
+    m_win = pb["marque"]["V"]/m_tot*100; e_win = pb["encaisse"]["V"]/e_tot*100
+    data_pb=[["","Matchs","Victoires","Nuls","Défaites","% Victoires"],
+             ["Marque le 1er but", pb["marque"]["total"], pb["marque"]["V"], pb["marque"]["N"], pb["marque"]["D"], f"{m_win:.0f}%"],
+             ["Encaisse le 1er but", pb["encaisse"]["total"], pb["encaisse"]["V"], pb["encaisse"]["N"], pb["encaisse"]["D"], f"{e_win:.0f}%"]]
+    t_pb=Table(data_pb,colWidths=[5*cm,2*cm,2*cm,2*cm,2*cm,3*cm])
+    t_pb.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TEXTCOLOR",(5,1),(5,-1),coul_rl),("FONTNAME",(5,1),(5,-1),"Helvetica-Bold"),
+        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+    ]))
+    elems += [t_pb, Spacer(1,6)]
+
+    # Dom vs Ext
+    elems.append(Paragraph("Domicile vs Extérieur", sous_sec))
+    vd,nd,dd=de["dom"]; ve,ne,de_=de["ext"]
+    td=vd+nd+dd or 1; te=ve+ne+de_ or 1
+    data_de=[["","V","N","D","% Victoires"],
+             ["Domicile",vd,nd,dd,f"{vd/td*100:.0f}%"],
+             ["Extérieur",ve,ne,de_,f"{ve/te*100:.0f}%"]]
+    t_de=Table(data_de,colWidths=[5*cm,2.5*cm,2.5*cm,2.5*cm,3.5*cm])
+    t_de.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TEXTCOLOR",(4,1),(4,-1),coul_rl),("FONTNAME",(4,1),(4,-1),"Helvetica-Bold"),
+        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+    ]))
+    elems += [t_de, Spacer(1,6)]
+
+    # Retours au score
+    elems.append(Paragraph("Retours au score", sous_sec))
+    rs_data=[["Scénario","Matchs"],
+             ["Jamais mené",rs["jamais"]],
+             ["Mené → Victoire",rs["mv"]],
+             ["Mené → Nul",rs["mn"]],
+             ["Mené → Défaite",rs["md"]]]
+    t_rs=Table(rs_data,colWidths=[10*cm,6*cm])
+    rs_coul=[(0,colors.HexColor(D1_VERT)),(0,coul_rl),(0,colors.HexColor(D1_OR)),(0,rouge_rl)]
+    rs_style=[]
+    for i,(r_,c_) in enumerate([(rs["jamais"],D1_VERT),(rs["mv"],coul_hex),(rs["mn"],D1_OR),(rs["md"],D1_ROUGE)],1):
+        rs_style.append(("TEXTCOLOR",(1,i),(1,i),colors.HexColor(c_)))
+        rs_style.append(("FONTNAME",(1,i),(1,i),"Helvetica-Bold"))
+    t_rs.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ALIGN",(1,0),(1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+    ]+rs_style))
+    elems += [t_rs, Spacer(1,6)]
+
+    # Momentum
+    elems.append(Paragraph("Momentum après un but (minutes moyennes)", sous_sec))
+    mo_data=[["Transition","Minutes moyennes"]]
+    for label, val in mo.items():
+        mo_data.append([label, f"{val} min" if val else "—"])
+    t_mo=Table(mo_data,colWidths=[10*cm,6*cm])
+    t_mo.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ALIGN",(1,0),(1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+    ]))
+    elems += [t_mo, Spacer(1,6)]
+
+    # ---- SECTION 03 : ANALYSE TEMPORELLE ----
+    elems.append(Paragraph("Section 03 — Analyse Temporelle", titre_sec))
+    elems.append(HRFlowable(width="100%",thickness=0.8,color=coul_rl,spaceAfter=6))
+
+    mins_p = dpour["minute"].dropna().astype(int)
+    mins_c = dcontre["minute"].dropna().astype(int)
+    tr_p = pd.cut(mins_p,bins=range(0,41,5),labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
+    tr_c = pd.cut(mins_c,bins=range(0,41,5),labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
+    max_tr = max(tr_p.max(), tr_c.max(), 1)
+
+    data_tr=[["Tranche","Buts marqués","","Buts encaissés",""]]
+    for tr in tr_p.index:
+        data_tr.append([str(tr), int(tr_p[tr]), "", int(tr_c[tr]), ""])
+    t_tr=Table(data_tr,colWidths=[2.5*cm,2.5*cm,6*cm,2.5*cm,3*cm])
+
+    tr_style=[]
+    for i in range(1,len(data_tr)):
+        vp=int(tr_p.iloc[i-1]); vc=int(tr_c.iloc[i-1])
+        # Barre marqués
+        w_p=int(vp/max_tr*100*0.6)
+        d_p=Drawing(6*cm*0.85,10)
+        d_p.add(Rect(0,1,6*cm*0.85,8,fillColor=colors.HexColor("#F0E8EA"),strokeColor=None))
+        if vp>0: d_p.add(Rect(0,1,vp/max_tr*6*cm*0.85,8,fillColor=coul_rl,strokeColor=None))
+        # Barre encaissés
+        d_c=Drawing(3*cm*0.85,10)
+        d_c.add(Rect(0,1,3*cm*0.85,8,fillColor=colors.HexColor("#F0E8EA"),strokeColor=None))
+        if vc>0: d_c.add(Rect(0,1,vc/max_tr*3*cm*0.85,8,fillColor=rouge_rl,strokeColor=None))
+        data_tr[i][2]=d_p; data_tr[i][4]=d_c
+
+    t_tr=Table(data_tr,colWidths=[2.5*cm,1.5*cm,7*cm,1.5*cm,4.5*cm])
+    t_tr.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),coul_rl),("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8F4F5")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ALIGN",(1,0),(1,-1),"CENTER"),("ALIGN",(3,0),(3,-1),"CENTER"),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+    ]))
+    elems += [t_tr, Spacer(1,6)]
+
+    # ---- SECTION 04 : ANALYSE DES BUTEURS ----
+    elems.append(Paragraph("Section 04 — Analyse des Buteurs", titre_sec))
+    elems.append(HRFlowable(width="100%",thickness=0.8,color=coul_rl,spaceAfter=6))
+    bb = dpour["joueur"].value_counts()
+    total_buts = len(dpour) or 1
+    elems.append(Paragraph(f"Top buteurs — {bb.head(3).sum()} buts sur {total_buts} "
+                            f"pour les 3 premiers ({bb.head(3).sum()/total_buts*100:.0f}%)", gris_stl))
+    for joueur, nb in bb.head(10).items():
+        pct = nb/total_buts*100
+        elems.append(Paragraph(f"{joueur}  ·  {nb} buts  ({pct:.0f}%)", np_stl))
+        elems.append(_pdf_barre(nb, int(bb.max()), couleur_hex=coul_hex))
+
+    # ---- SECTION 05 : ORIGINES ----
+    if eq in EQUIPES_AVEC_ORIGINE:
+        elems.append(Paragraph("Section 05 — Origines des buts", titre_sec))
+        elems.append(HRFlowable(width="100%",thickness=0.8,color=coul_rl,spaceAfter=6))
+        oo = dpour.loc[dpour["origine"].notna(),"origine"].value_counts()
+        n_r = int(dpour["origine"].notna().sum())
+        elems.append(Paragraph(f"{n_r} buts analysés sur {total_buts}", gris_stl))
+        for orig, nb in oo.items():
+            pct = nb/n_r*100
+            elems.append(Paragraph(f"{orig}  ·  {nb} buts  ({pct:.0f}%)", np_stl))
+            elems.append(_pdf_barre(nb, int(oo.max()), couleur_hex=coul_hex))
+
+    doc.build(elems); buf.seek(0)
+    return buf
+
+
+# ============================================================================
+# PAGE — ANALYSE TACTIQUE
+# ============================================================================
+if page == "Analyse Tactique":
+    st.title("Analyse Tactique")
+    eq = st.selectbox("Équipe", EQUIPES)
+    coul = COULEUR_EQUIPE.get(eq, D1_ROUGE)
+    clt  = construire_classement()
+    rang_row = clt[clt["equipe"]==eq].iloc[0]
+    rang = clt[clt["equipe"]==eq].index[0]+1
+
+    # Header équipe
+    lg = logo_b64(eq, 46)
+    st.markdown(
+        f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+        f'border-left:4px solid {coul};border-radius:11px;padding:.85rem 1.1rem;'
+        f'display:flex;align-items:center;gap:.9rem;margin-bottom:1rem">'
+        f'{lg}<div>'
+        f'<div style="font-size:1.05rem;font-weight:800">{eq}</div>'
+        f'<div style="color:{D1_GRIS};font-size:.8rem">'
+        f'Rang <b style="color:{coul}">{rang}</b> · {int(rang_row["Pts"])} pts · '
+        f'{int(rang_row["V"])}V {int(rang_row["N"])}N {int(rang_row["D"])}D</div>'
+        f'<div style="margin-top:.25rem">{forme_ronds(rang_row["forme"])}</div>'
+        f'</div></div>', unsafe_allow_html=True
+    )
+
+    pb = analyser_premier_but(eq)
+    de_stats = analyser_dom_ext(eq)
+    rs = analyser_retours_score(eq)
+    mo = analyser_momentum(eq)
+
+    # ---- LIGNE 1 : Impact premier but + Dom/Ext ----
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.markdown("### Impact du premier but")
+        m_tot = pb["marque"]["total"] or 1
+        e_tot = pb["encaisse"]["total"] or 1
+        m_win = pb["marque"]["V"]/m_tot*100
+        e_win = pb["encaisse"]["V"]/e_tot*100
+        # Sous-titre contextuel
+        if m_win > e_win:
+            diff = m_win - e_win
+            msg = f"L'équipe est <b>{diff:.0f}%</b> plus performante quand elle marque le premier but"
+        else:
+            msg = "L'équipe reste performante même en encaissant le premier but"
+        st.markdown(f'<p style="color:{D1_GRIS};font-size:.82rem;margin-bottom:.6rem">{msg}</p>',
+                    unsafe_allow_html=True)
+        ca, cb = st.columns(2)
+        ca.markdown(_carte_stat(
+            f"Marque 1er ({pb['marque']['total']} matchs)",
+            f"{m_win:.0f}%",
+            f"{pb['marque']['V']}V · {pb['marque']['N']}N · {pb['marque']['D']}D",
+            D1_VERT if m_win >= 70 else D1_OR
+        ), unsafe_allow_html=True)
+        cb.markdown(_carte_stat(
+            f"Encaisse 1er ({pb['encaisse']['total']} matchs)",
+            f"{e_win:.0f}%",
+            f"{pb['encaisse']['V']}V · {pb['encaisse']['N']}N · {pb['encaisse']['D']}D",
+            D1_OR if e_win >= 50 else D1_ROUGE
+        ), unsafe_allow_html=True)
+
+    with c2:
+        st.markdown("### Domicile vs Extérieur")
+        vd, nd, dd = de_stats["dom"]
+        ve, ne, de_ = de_stats["ext"]
+        td = vd+nd+dd or 1; te = ve+ne+de_ or 1
+        ca, cb = st.columns(2)
+        ca.markdown(_carte_stat(
+            f"Domicile ({td} matchs)",
+            f"{vd/td*100:.0f}%",
+            f"{vd}V · {nd}N · {dd}D",
+            coul
+        ), unsafe_allow_html=True)
+        cb.markdown(_carte_stat(
+            f"Extérieur ({te} matchs)",
+            f"{ve/te*100:.0f}%",
+            f"{ve}V · {ne}N · {de_}D",
+            coul
+        ), unsafe_allow_html=True)
+
+        # mini graphe dom vs ext
+        fig_de = go.Figure(go.Bar(
+            x=["Domicile","Extérieur"],
+            y=[vd/td*100, ve/te*100],
+            marker_color=[coul, hex_to_rgba(coul, 0.6)],
+            text=[f"{vd/td*100:.0f}%", f"{ve/te*100:.0f}%"],
+            textposition="outside", textangle=0
+        ))
+        fig_de.update_yaxes(showticklabels=False, range=[0,110])
+        st.plotly_chart(style_fig(fig_de, 200), use_container_width=True)
+
+    st.markdown("---")
+
+    # ---- LIGNE 2 : Retours au score + Momentum ----
+    c3, c4 = st.columns(2)
+
+    with c3:
+        st.markdown("### Retours au score")
+        tot_matchs = rs["jamais"]+rs["mv"]+rs["mn"]+rs["md"]
+        if rs["mv"]+rs["mn"]+rs["md"] == 0:
+            st.markdown(f'<p style="color:{D1_GRIS};font-size:.82rem">'
+                        f'N\'a jamais été menée sur les {tot_matchs} matchs.</p>',
+                        unsafe_allow_html=True)
+        else:
+            st.markdown(f'<p style="color:{D1_GRIS};font-size:.82rem">'
+                        f'Sur {rs["mv"]+rs["mn"]+rs["md"]} matchs où l\'équipe a été menée, '
+                        f'elle a réussi à revenir {rs["mv"]+rs["mn"]} fois.</p>',
+                        unsafe_allow_html=True)
+
+        data_rs = [
+            ("Jamais menée", rs["jamais"], tot_matchs, D1_VERT),
+            ("Menée → Victoire", rs["mv"], tot_matchs, coul),
+            ("Menée → Nul", rs["mn"], tot_matchs, D1_OR),
+            ("Menée → Défaite", rs["md"], tot_matchs, D1_ROUGE),
+        ]
+        for label, val, tot, c_ in data_rs:
+            pct = val/tot*100 if tot else 0
+            st.markdown(
+                f'<div style="margin:.35rem 0">'
+                f'<div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:.2rem">'
+                f'<span>{label}</span><b style="color:{c_}">{val} matchs</b></div>'
+                f'<div style="background:rgba(255,255,255,.06);border-radius:4px;height:8px;overflow:hidden">'
+                f'<div style="width:{pct:.0f}%;background:{c_};height:8px;border-radius:4px"></div>'
+                f'</div></div>',
+                unsafe_allow_html=True
+            )
+
+    with c4:
+        st.markdown("### Momentum après un but")
+        st.markdown(f'<p style="color:{D1_GRIS};font-size:.82rem;margin-bottom:.6rem">'
+                    f'Temps moyen (en minutes) entre deux buts consécutifs selon le contexte.</p>',
+                    unsafe_allow_html=True)
+
+        couleurs_mo = {
+            "Marque → Marque": D1_VERT,
+            "Marque → Encaisse": D1_OR,
+            "Encaisse → Marque": coul,
+            "Encaisse → Encaisse": D1_ROUGE,
+        }
+        for label, val in mo.items():
+            c_ = couleurs_mo.get(label, D1_GRIS)
+            txt = f"{val} min" if val else "—"
+            st.markdown(
+                f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+                f'border-left:3px solid {c_};border-radius:8px;padding:.45rem .8rem;margin:.25rem 0;'
+                f'display:flex;justify-content:space-between;align-items:center">'
+                f'<span style="font-size:.85rem">{label}</span>'
+                f'<b style="color:{c_};font-size:1.1rem">{txt}</b>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+        # Bilan vs Top 6
+        st.markdown("### Bilan vs Top 6")
+        vt6, nt6, dt6 = analyser_bilan_top6(eq)
+        tot_t6 = vt6+nt6+dt6
+        if tot_t6:
+            ca, cb, cc = st.columns(3)
+            ca.metric("V", vt6); cb.metric("N", nt6); cc.metric("D", dt6)
+            st.markdown(f'<p style="color:{D1_GRIS};font-size:.78rem">'
+                        f'{vt6/tot_t6*100:.0f}% de victoires sur {tot_t6} matchs contre le Top 6</p>',
+                        unsafe_allow_html=True)
+        else:
+            st.info("Pas encore de matchs contre le Top 6.")
+
+    bloc_export(pdf_rapport_complet(eq),
+                f"rapport_{eq[:20].replace(' ','_')}.pdf",
+                f"Exporter le rapport complet {eq.split()[0]}")
+
+
+# ============================================================================
+# PAGE — RAPPORT ÉQUIPE
+# ============================================================================
+elif page == "Rapport équipe":
+    st.title("Rapport équipe complet")
+    st.markdown("<p class='note'>Génère un rapport PDF complet pour chaque équipe — "
+                "5 sections : vue d'ensemble, analyse tactique, profil temporel, "
+                "buteurs, origines.</p>", unsafe_allow_html=True)
+
+    eq = st.selectbox("Équipe à analyser", EQUIPES)
+    coul = COULEUR_EQUIPE.get(eq, D1_ROUGE)
+    lg   = logo_b64(eq, 52)
+    clt  = construire_classement()
+    rang_row = clt[clt["equipe"]==eq].iloc[0]
+    rang = clt[clt["equipe"]==eq].index[0]+1
+    dpour = df[df["equipe_marque"]==eq]
+    dcontre = df[df["equipe_encaisse"]==eq]
+
+    # Aperçu rapide
+    st.markdown(
+        f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+        f'border-left:4px solid {coul};border-radius:12px;padding:1rem 1.2rem;'
+        f'display:flex;align-items:center;gap:1rem;margin-bottom:1rem">'
+        f'{lg}<div style="flex:1">'
+        f'<div style="font-size:1.1rem;font-weight:800">{eq}</div>'
+        f'<div style="color:{D1_GRIS};font-size:.82rem;margin-top:.2rem">'
+        f'Rang <b style="color:{coul}">{rang}</b> · {int(rang_row["Pts"])} pts · '
+        f'{int(rang_row["BP"])} buts marqués · {int(rang_row["BC"])} encaissés</div>'
+        f'<div style="margin-top:.3rem">{forme_ronds(rang_row["forme"])}</div>'
+        f'</div>'
+        f'<div style="text-align:right">'
+        f'<div style="font-size:.72rem;color:{D1_GRIS};text-transform:uppercase;letter-spacing:.5px">Contenu du rapport</div>'
+        f'<div style="font-size:.82rem;color:{D1_BLANC};margin-top:.3rem">'
+        f'01 Vue d\'ensemble &nbsp;·&nbsp; 02 Analyse Tactique<br>'
+        f'03 Analyse Temporelle &nbsp;·&nbsp; 04 Buteurs'
+        f'{"&nbsp;·&nbsp; 05 Origines" if eq in EQUIPES_AVEC_ORIGINE else ""}'
+        f'</div></div>'
+        f'</div>', unsafe_allow_html=True
+    )
+
+    # Aperçu des chiffres clés
+    c1,c2,c3,c4 = st.columns(4)
+    pb  = analyser_premier_but(eq)
+    de2 = analyser_dom_ext(eq)
+    vd2,nd2,dd2 = de2["dom"]; ve2,ne2,de2_ = de2["ext"]
+    td2 = vd2+nd2+dd2 or 1; te2 = ve2+ne2+de2_ or 1
+    m_tot2 = pb["marque"]["total"] or 1
+
+    c1.metric("Taux de victoire", f'{int(rang_row["V"])/len(construire_matchs()[(construire_matchs()["dom"]==eq)|(construire_matchs()["ext"]==eq)])*100:.0f}%')
+    c2.metric("Buts/match", f"{len(dpour)/len(construire_matchs()[(construire_matchs()['dom']==eq)|(construire_matchs()['ext']==eq)]):.1f}")
+    c3.metric("% victoire si 1er but", f"{pb['marque']['V']/m_tot2*100:.0f}%")
+    c4.metric("% victoire dom.", f"{vd2/td2*100:.0f}%")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="background:rgba(192,0,24,.08);border:1px solid {D1_ROUGE};'
+        f'border-radius:10px;padding:.8rem 1rem;margin-bottom:.8rem;font-size:.88rem">'
+        f'📋 Le rapport PDF contient toutes les sections avec tableaux et barres visuelles, '
+        f'optimisé pour être envoyé à un staff technique ou présenté en réunion.</div>',
+        unsafe_allow_html=True
+    )
+
+    bloc_export(pdf_rapport_complet(eq),
+                f"rapport_D1_{eq[:20].replace(' ','_')}_J{max(JOURNEES)}.pdf",
+                f"Générer le rapport — {eq}")
