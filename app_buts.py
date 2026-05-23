@@ -357,7 +357,8 @@ def reconstruire_score(df_match, dom, ext):
 # ============================================================================
 NAV = {
     "CHAMPIONNAT": [("🏠", "Accueil"), ("🏆", "Classement"),
-                    ("⚽", "Fiche match"), ("📈", "Analyse")],
+                    ("⚽", "Fiche match"), ("⏱", "Profil temporel"),
+                    ("📊", "Dynamique de score"), ("📈", "Analyse avancée")],
     "ÉQUIPES":     [("🛡", "Fiche équipe"), ("⚔", "Confrontations"),
                     ("📋", "Rapport équipe")],
     "JOUEURS":     [("👟", "Buteurs")],
@@ -1325,308 +1326,222 @@ elif page == "Buteurs":
 # ============================================================================
 # PAGE — PROFIL TEMPOREL
 # ============================================================================
-elif page == "Analyse":
-    st.title("Analyse du championnat")
+elif page == "Profil temporel":
+    st.title("Profil temporel des buts")
+    eq=st.selectbox("Périmètre",["Tout le championnat"]+EQUIPES, key="pt_eq")
+    d=df if eq=="Tout le championnat" else df[df["equipe_marque"]==eq]
+    p1=int((d["periode"]==1).sum()); p2=int((d["periode"]==2).sum())
+    c1,c2,c3=st.columns(3)
+    c1.metric("Buts",len(d))
+    c2.metric("1re période",p1,f"{p1/len(d)*100:.0f}%" if len(d) else "")
+    c3.metric("2e période",p2,f"{p2/len(d)*100:.0f}%" if len(d) else "")
+    st.markdown("### Buts par minute")
+    mins=d["minute"].dropna().astype(int)
+    serie=mins.value_counts().reindex(range(1,41),fill_value=0).sort_index()
+    coul_b=[D1_ROUGE if m<=20 else D1_BORDEAUX_2 for m in serie.index]
+    fig=go.Figure(go.Bar(x=[f"{m}'" for m in serie.index],y=serie.values,
+                         marker_color=coul_b,text=serie.values,
+                         textposition="outside",textangle=0,
+                         textfont=dict(size=12,color=D1_BLANC)))
+    fig.update_yaxes(showticklabels=False)
+    fig.add_shape(type="line",x0="20'",x1="20'",y0=0,y1=1,yref="paper",
+                  line=dict(color=D1_GRIS,width=1,dash="dot"))
+    fig.add_annotation(x="20'",y=1,yref="paper",text="Mi-temps",
+                       showarrow=False,font=dict(color=D1_GRIS,size=10),
+                       yanchor="bottom",xanchor="right")
+    st.plotly_chart(style_fig(fig,300),use_container_width=True)
+    st.markdown("<p class='note'>Rouge = 1re période · Bordeaux = 2e période</p>",unsafe_allow_html=True)
+    st.markdown("### Buts par tranche de 5 minutes")
+    tr=pd.cut(mins,bins=range(0,41,5),labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
+    coul_q=[D1_ROUGE if i<4 else D1_BORDEAUX_2 for i in range(8)]
+    fig2=go.Figure(go.Bar(x=tr.index.astype(str),y=tr.values,marker_color=coul_q,
+                          text=tr.values,textposition="outside",textangle=0,
+                          textfont=dict(size=13,color=D1_BLANC)))
+    fig2.update_yaxes(showticklabels=False)
+    st.plotly_chart(style_fig(fig2,270),use_container_width=True)
 
-    tab_pt, tab_ds, tab_av = st.tabs([
-        "⏱  Profil temporel",
-        "📊  Dynamique de score",
-        "🔬  Analyses avancées",
-    ])
-
-    # ================================================================
-    # ONGLET 1 — PROFIL TEMPOREL
-    # ================================================================
-    with tab_pt:
-        eq=st.selectbox("Périmètre",["Tout le championnat"]+EQUIPES, key="pt_eq")
-        d=df if eq=="Tout le championnat" else df[df["equipe_marque"]==eq]
-        p1=int((d["periode"]==1).sum()); p2=int((d["periode"]==2).sum())
+elif page == "Dynamique de score":
+    st.title("Dynamique de score")
+    st.markdown("<p class='note'>Situation de l'équipe qui marque, juste avant son but.</p>",unsafe_allow_html=True)
+    eq=st.selectbox("Périmètre",["Tout le championnat"]+EQUIPES,key="ds_eq")
+    d=df if eq=="Tout le championnat" else df[df["equipe_marque"]==eq]
+    d=d[d["situation"].notna()]
+    ordre=["Est mené","Égalité","Menant"]
+    coul_sit={"Est mené":D1_ROUGE,"Égalité":D1_OR,"Menant":D1_VERT}
+    sit=d["situation"].value_counts().reindex(ordre,fill_value=0)
+    tot=sit.sum() or 1
+    c1,c2,c3=st.columns(3)
+    c1.metric("Est mené",int(sit["Est mené"]),f"{sit['Est mené']/tot*100:.0f}%")
+    c2.metric("À égalité",int(sit["Égalité"]),f"{sit['Égalité']/tot*100:.0f}%")
+    c3.metric("En menant",int(sit["Menant"]),f"{sit['Menant']/tot*100:.0f}%")
+    fig=go.Figure(go.Bar(x=ordre,y=sit.values,
+                         marker_color=[coul_sit[s] for s in ordre],
+                         text=[f"{v}  ({v/tot*100:.0f}%)" for v in sit.values],
+                         textposition="outside",textangle=0,
+                         textfont=dict(size=13,color=D1_BLANC),width=[0.4,0.4,0.4]))
+    fig.update_yaxes(showticklabels=False)
+    st.plotly_chart(style_fig(fig,260),use_container_width=True)
+    if eq=="Tout le championnat":
+        st.markdown("### Comparaison par équipe")
+        rows=[]
+        for e in EQUIPES:
+            de=df[(df["equipe_marque"]==e)&(df["situation"].notna())]
+            if len(de):
+                rows.append({"Équipe":e,
+                    "pct_mené":(de["situation"]=="Est mené").mean()*100,
+                    "pct_egal":(de["situation"]=="Égalité").mean()*100,
+                    "pct_men": (de["situation"]=="Menant").mean()*100})
+        comp=pd.DataFrame(rows)
         c1,c2,c3=st.columns(3)
-        c1.metric("Buts",len(d))
-        c2.metric("1re période",p1,f"{p1/len(d)*100:.0f}%" if len(d) else "")
-        c3.metric("2e période",p2,f"{p2/len(d)*100:.0f}%" if len(d) else "")
+        with c1:
+            st.markdown("#### Est mené")
+            s=comp.sort_values("pct_mené",ascending=False)
+            fig_m=go.Figure(go.Bar(x=s["pct_mené"].round(0),y=[nc(e) for e in s["Équipe"]],
+                orientation="h",marker_color=D1_ROUGE,
+                text=[f"{v:.0f}%" for v in s["pct_mené"]],
+                textposition="outside",textangle=0,
+                textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
+            fig_m.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_m,max(280,28*len(s))),use_container_width=True)
+        with c2:
+            st.markdown("#### À égalité")
+            s=comp.sort_values("pct_egal",ascending=False)
+            fig_e=go.Figure(go.Bar(x=s["pct_egal"].round(0),y=[nc(e) for e in s["Équipe"]],
+                orientation="h",marker_color=D1_OR,
+                text=[f"{v:.0f}%" for v in s["pct_egal"]],
+                textposition="outside",textangle=0,
+                textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
+            fig_e.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_e,max(280,28*len(s))),use_container_width=True)
+        with c3:
+            st.markdown("#### En menant")
+            s=comp.sort_values("pct_men",ascending=False)
+            fig_v=go.Figure(go.Bar(x=s["pct_men"].round(0),y=[nc(e) for e in s["Équipe"]],
+                orientation="h",marker_color=D1_VERT,
+                text=[f"{v:.0f}%" for v in s["pct_men"]],
+                textposition="outside",textangle=0,
+                textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
+            fig_v.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_v,max(280,28*len(s))),use_container_width=True)
 
-        st.markdown("### Buts par minute")
-        mins=d["minute"].dropna().astype(int)
-        serie=mins.value_counts().reindex(range(1,41),fill_value=0).sort_index()
-        coul_b=[D1_ROUGE if m<=20 else D1_BORDEAUX_2 for m in serie.index]
-        fig=go.Figure(go.Bar(x=[f"{m}'" for m in serie.index],y=serie.values,
-                             marker_color=coul_b,text=serie.values,
-                             textposition="outside",textangle=0,
-                             textfont=dict(size=12,color=D1_BLANC)))
-        fig.update_yaxes(showticklabels=False)
-        fig.add_shape(type="line",x0="20'",x1="20'",y0=0,y1=1,yref="paper",
-                      line=dict(color=D1_GRIS,width=1,dash="dot"))
-        fig.add_annotation(x="20'",y=1,yref="paper",text="Mi-temps",
-                           showarrow=False,font=dict(color=D1_GRIS,size=10),
-                           yanchor="bottom",xanchor="right")
-        st.plotly_chart(style_fig(fig,300),use_container_width=True)
-        st.markdown("<p class='note'>Rouge = 1re période · Bordeaux = 2e période</p>",unsafe_allow_html=True)
+elif page == "Analyse avancée":
+    st.title("Analyse avancée")
+    matchs = construire_matchs()
 
-        st.markdown("### Buts par tranche de 5 minutes")
-        tr=pd.cut(mins,bins=range(0,41,5),labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
-        coul_q=[D1_ROUGE if i<4 else D1_BORDEAUX_2 for i in range(8)]
-        fig2=go.Figure(go.Bar(x=tr.index.astype(str),y=tr.values,marker_color=coul_q,
-                              text=tr.values,textposition="outside",textangle=0,
-                              textfont=dict(size=13,color=D1_BLANC)))
-        fig2.update_yaxes(showticklabels=False)
-        st.plotly_chart(style_fig(fig2,270),use_container_width=True)
+    st.markdown("### Régularité offensive")
+    rows_reg=[]
+    for eq in EQUIPES:
+        meq=matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+        bpm=[]
+        for _,m in meq.iterrows():
+            dm=df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
+            bpm.append(int((dm["equipe_marque"]==eq).sum()))
+        if bpm:
+            rows_reg.append({"equipe":eq,"moy":pd.Series(bpm).mean(),"std":pd.Series(bpm).std(ddof=0),"min":min(bpm),"max":max(bpm)})
+    reg=pd.DataFrame(rows_reg).sort_values("moy",ascending=False)
+    cg_r,cd_r=st.columns(2)
+    with cg_r:
+        st.markdown("#### Moyenne de buts/match")
+        fig_moy=go.Figure()
+        for _,r in reg.iterrows():
+            c_eq=COULEUR_EQUIPE.get(r["equipe"],D1_ROUGE)
+            fig_moy.add_trace(go.Bar(x=[round(r["moy"],1)],y=[nc(r["equipe"])],
+                orientation="h",marker_color=c_eq,text=[f'{r["moy"]:.1f}'],
+                textposition="outside",textangle=0,showlegend=False,
+                textfont=dict(size=13,color=D1_BLANC),cliponaxis=False,
+                hovertemplate=f'{r["equipe"]}<br>Moy:{r["moy"]:.1f} Min:{r["min"]} Max:{r["max"]}<extra></extra>'))
+        fig_moy.update_yaxes(autorange="reversed")
+        st.plotly_chart(style_fig(fig_moy,max(320,30*len(reg))),use_container_width=True)
+    with cd_r:
+        st.markdown("#### Régularité (écart-type)")
+        reg_s=reg.sort_values("std")
+        fig_std=go.Figure()
+        for _,r in reg_s.iterrows():
+            ratio=(r["std"]-reg_s["std"].min())/((reg_s["std"].max()-reg_s["std"].min()) or 1)
+            c_eq=D1_VERT if ratio<0.4 else(D1_OR if ratio<0.7 else D1_ROUGE)
+            fig_std.add_trace(go.Bar(x=[round(r["std"],1)],y=[nc(r["equipe"])],
+                orientation="h",marker_color=c_eq,text=[f'± {r["std"]:.1f}'],
+                textposition="outside",textangle=0,showlegend=False,
+                textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
+        fig_std.update_yaxes(autorange="reversed")
+        st.plotly_chart(style_fig(fig_std,max(320,30*len(reg_s))),use_container_width=True)
+    st.markdown("<p class='note'>🟢 régulier · 🟡 moyen · 🔴 irrégulier</p>",unsafe_allow_html=True)
+    st.markdown("---")
 
-    # ================================================================
-    # ONGLET 2 — DYNAMIQUE DE SCORE
-    # ================================================================
-    with tab_ds:
-        st.markdown("<p class='note'>Situation de l'équipe qui marque, juste avant son but.</p>",unsafe_allow_html=True)
-        eq=st.selectbox("Périmètre",["Tout le championnat"]+EQUIPES,key="ds_eq")
-        d=df if eq=="Tout le championnat" else df[df["equipe_marque"]==eq]
-        d=d[d["situation"].notna()]
-        ordre=["Est mené","Égalité","Menant"]
-        coul_sit={"Est mené":D1_ROUGE,"Égalité":D1_OR,"Menant":D1_VERT}
-        sit=d["situation"].value_counts().reindex(ordre,fill_value=0)
-        tot=sit.sum() or 1
-        c1,c2,c3=st.columns(3)
-        c1.metric("Est mené",int(sit["Est mené"]),f"{sit['Est mené']/tot*100:.0f}%")
-        c2.metric("À égalité",int(sit["Égalité"]),f"{sit['Égalité']/tot*100:.0f}%")
-        c3.metric("En menant",int(sit["Menant"]),f"{sit['Menant']/tot*100:.0f}%")
-        fig=go.Figure(go.Bar(x=ordre,y=sit.values,
-                             marker_color=[coul_sit[s] for s in ordre],
-                             text=[f"{v}  ({v/tot*100:.0f}%)" for v in sit.values],
-                             textposition="outside",textangle=0,
-                             textfont=dict(size=13,color=D1_BLANC),width=[0.4,0.4,0.4]))
-        fig.update_yaxes(showticklabels=False)
-        st.plotly_chart(style_fig(fig,260),use_container_width=True)
-        if eq=="Tout le championnat":
-            st.markdown("### Comparaison par équipe — buts selon situation de score")
-            rows=[]
-            for e in EQUIPES:
-                de=df[(df["equipe_marque"]==e)&(df["situation"].notna())]
-                if len(de):
-                    rows.append({"Équipe":e,
-                        "pct_mené":(de["situation"]=="Est mené").mean()*100,
-                        "pct_egal":(de["situation"]=="Égalité").mean()*100,
-                        "pct_men": (de["situation"]=="Menant").mean()*100})
-            comp=pd.DataFrame(rows)
-            c1,c2,c3=st.columns(3)
-            with c1:
-                st.markdown("#### Est mené")
-                s=comp.sort_values("pct_mené",ascending=False)
-                fig_m=go.Figure(go.Bar(x=s["pct_mené"].round(0),y=[nc(e) for e in s["Équipe"]],
-                    orientation="h",marker_color=D1_ROUGE,
-                    text=[f"{v:.0f}%" for v in s["pct_mené"]],
-                    textposition="outside",textangle=0,
-                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
-                fig_m.update_yaxes(autorange="reversed")
-                st.plotly_chart(style_fig(fig_m,max(280,28*len(s))),use_container_width=True)
-            with c2:
-                st.markdown("#### À égalité")
-                s=comp.sort_values("pct_egal",ascending=False)
-                fig_e=go.Figure(go.Bar(x=s["pct_egal"].round(0),y=[nc(e) for e in s["Équipe"]],
-                    orientation="h",marker_color=D1_OR,
-                    text=[f"{v:.0f}%" for v in s["pct_egal"]],
-                    textposition="outside",textangle=0,
-                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
-                fig_e.update_yaxes(autorange="reversed")
-                st.plotly_chart(style_fig(fig_e,max(280,28*len(s))),use_container_width=True)
-            with c3:
-                st.markdown("#### En menant")
-                s=comp.sort_values("pct_men",ascending=False)
-                fig_v=go.Figure(go.Bar(x=s["pct_men"].round(0),y=[nc(e) for e in s["Équipe"]],
-                    orientation="h",marker_color=D1_VERT,
-                    text=[f"{v:.0f}%" for v in s["pct_men"]],
-                    textposition="outside",textangle=0,
-                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
-                fig_v.update_yaxes(autorange="reversed")
-                st.plotly_chart(style_fig(fig_v,max(280,28*len(s))),use_container_width=True)
-
-    # ================================================================
-    # ONGLET 3 — ANALYSES AVANCÉES
-    # ================================================================
-    with tab_av:
-        matchs = construire_matchs()
-
-        # -- Régularité offensive --
-        st.markdown("### Régularité offensive")
-        st.markdown("<p class='note'>Moyenne de buts par match et constance d'un match à l'autre (écart-type).</p>",unsafe_allow_html=True)
-        rows_reg=[]
-        for eq in EQUIPES:
-            meq=matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-            bpm=[]
-            for _,m in meq.iterrows():
-                dm=df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
-                bpm.append(int((dm["equipe_marque"]==eq).sum()))
-            if bpm:
-                rows_reg.append({"equipe":eq,"moy":pd.Series(bpm).mean(),"std":pd.Series(bpm).std(ddof=0),"min":min(bpm),"max":max(bpm)})
-        reg=pd.DataFrame(rows_reg).sort_values("moy",ascending=False)
-        cg_r,cd_r=st.columns(2)
-        with cg_r:
-            st.markdown("#### Moyenne de buts/match")
-            fig_moy=go.Figure()
-            for _,r in reg.iterrows():
-                c_eq=COULEUR_EQUIPE.get(r["equipe"],D1_ROUGE)
-                fig_moy.add_trace(go.Bar(x=[round(r["moy"],1)],y=[nc(r["equipe"])],
-                    orientation="h",marker_color=c_eq,text=[f'{r["moy"]:.1f}'],
-                    textposition="outside",textangle=0,showlegend=False,
-                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False,
-                    hovertemplate=f'{r["equipe"]}<br>Moy : {r["moy"]:.1f}<br>Min : {r["min"]} · Max : {r["max"]}<extra></extra>'))
-            fig_moy.update_yaxes(autorange="reversed")
-            st.plotly_chart(style_fig(fig_moy,max(320,30*len(reg))),use_container_width=True)
-        with cd_r:
-            st.markdown("#### Régularité (écart-type)")
-            reg_s=reg.sort_values("std")
-            fig_std=go.Figure()
-            for _,r in reg_s.iterrows():
-                ratio=(r["std"]-reg_s["std"].min())/((reg_s["std"].max()-reg_s["std"].min()) or 1)
-                c_eq=D1_VERT if ratio<0.4 else(D1_OR if ratio<0.7 else D1_ROUGE)
-                fig_std.add_trace(go.Bar(x=[round(r["std"],1)],y=[nc(r["equipe"])],
-                    orientation="h",marker_color=c_eq,text=[f'± {r["std"]:.1f}'],
-                    textposition="outside",textangle=0,showlegend=False,
-                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
-            fig_std.update_yaxes(autorange="reversed")
-            st.plotly_chart(style_fig(fig_std,max(320,30*len(reg_s))),use_container_width=True)
-        st.markdown("<p class='note'>🟢 régulier · 🟡 moyen · 🔴 irrégulier — survole pour mini/maxi</p>",unsafe_allow_html=True)
-
-        st.markdown("---")
-
-        # -- Momentum --
-        st.markdown("### Momentum — buts selon le moment de la période")
-        eq_sel=st.selectbox("Équipe (ou tout le championnat)",["Tout le championnat"]+EQUIPES,key="momentum_sel")
-        d_mom=df if eq_sel=="Tout le championnat" else df[df["equipe_marque"]==eq_sel]
-        def tranche_moment(row):
-            m=row["minute"];p=row["periode"]
-            if p==1:
-                if m<=5:  return "Début P1 (1-5')"
-                elif m<=15: return "Milieu P1 (6-15')"
-                else:       return "Fin P1 (16-20')"
+    st.markdown("### Radar comparatif")
+    eq_radar=st.multiselect("Équipes",EQUIPES,default=EQUIPES[:3],max_selections=4)
+    if len(eq_radar)>=2:
+        indicateurs=["Volume offensif","Solidité défensive","Résistance","Régularité","Collectif"]
+        def radar_vals(eq):
+            dp=df[df["equipe_marque"]==eq]; dc=df[df["equipe_encaisse"]==eq]
+            meq_r=matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]; nm=len(meq_r) or 1
+            vol_off=len(dp)/nm; enc_pm=len(dc)/nm
+            rs_r=analyser_retours_score(eq); menes=rs_r["mv"]+rs_r["mn"]+rs_r["md"]
+            resistance=(rs_r["mv"]+rs_r["mn"])/menes*100 if menes>0 else 50
+            bpm_l=[]
+            for _,m in meq_r.iterrows():
+                dm2=df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
+                bpm_l.append(int((dm2["equipe_marque"]==eq).sum()))
+            std=pd.Series(bpm_l).std(ddof=0) if len(bpm_l)>1 else 0
+            collectif=float(dp["joueur"].nunique())
+            return [vol_off,enc_pm,resistance,std,collectif]
+        all_vals={eq:radar_vals(eq) for eq in eq_radar}
+        all_matrix=pd.DataFrame(all_vals,index=indicateurs)
+        axes_inv={"Solidité défensive","Régularité"}
+        norm=all_matrix.copy()
+        for idx in indicateurs:
+            mn=all_matrix.loc[idx].min(); mx=all_matrix.loc[idx].max()
+            if mx!=mn:
+                vn=(all_matrix.loc[idx]-mn)/(mx-mn)*100
+                norm.loc[idx]=100-vn if idx in axes_inv else vn
             else:
-                if m<=25: return "Début P2 (21-25')"
-                elif m<=35: return "Milieu P2 (26-35')"
-                else:       return "Fin P2 (36-40')"
-        d_mom2=d_mom.copy(); d_mom2["moment"]=d_mom2.apply(tranche_moment,axis=1)
-        ordre_mom=["Début P1 (1-5')","Milieu P1 (6-15')","Fin P1 (16-20')","Début P2 (21-25')","Milieu P2 (26-35')","Fin P2 (36-40')"]
-        mom_cnt=d_mom2["moment"].value_counts().reindex(ordre_mom,fill_value=0)
-        coul_mom=[D1_ROUGE]*3+[D1_BORDEAUX_2]*3
-        fig_mom=go.Figure(go.Bar(x=ordre_mom,y=mom_cnt.values,marker_color=coul_mom,
-            text=mom_cnt.values,textposition="outside",textangle=0,
-            textfont=dict(size=13,color=D1_BLANC)))
-        fig_mom.update_yaxes(showticklabels=False)
-        best=mom_cnt.idxmax()
-        st.plotly_chart(style_fig(fig_mom,270),use_container_width=True)
-        st.markdown(f"<p class='note'>Moment le plus productif : <b>{best}</b> ({int(mom_cnt.max())} buts)</p>",unsafe_allow_html=True)
+                norm.loc[idx]=50
+        fig_radar=go.Figure()
+        for eq in eq_radar:
+            vals=norm[eq].tolist(); raw=all_matrix[eq].tolist()
+            raw_labels=[f"{raw[0]:.1f} buts/match",f"{raw[1]:.1f} encaissés/match",
+                f"{raw[2]:.0f}% résultat positif quand mené",f"écart-type {raw[3]:.1f}",f"{int(raw[4])} buteurs"]
+            coul=COULEUR_EQUIPE.get(eq,D1_ROUGE)
+            fig_radar.add_trace(go.Scatterpolar(
+                r=vals+[vals[0]],theta=indicateurs+[indicateurs[0]],name=nc(eq),
+                line=dict(color=coul,width=2.5),fill="toself",fillcolor=hex_to_rgba(coul,0.15),
+                customdata=raw_labels+[raw_labels[0]],
+                hovertemplate="<b>%{theta}</b><br>%{customdata}<extra></extra>"))
+        fig_radar.update_layout(polar=dict(
+            bgcolor="rgba(0,0,0,0)",
+            radialaxis=dict(visible=True,range=[0,100],gridcolor="rgba(255,255,255,.1)",tickfont=dict(size=9)),
+            angularaxis=dict(gridcolor="rgba(255,255,255,.1)",tickfont=dict(size=13,color=D1_BLANC))))
+        st.plotly_chart(style_fig(fig_radar,460),use_container_width=True)
+        st.markdown(
+            f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};border-radius:10px;padding:.8rem 1rem;font-size:.8rem;color:{D1_GRIS}">'+
+            f'<b style="color:{D1_BLANC}">Lecture</b> — tous les axes "plus = mieux", normalisés 0-100.<br>'+
+            f'<b>Volume offensif</b> = buts/match · <b>Solidité défensive</b> = inverse buts encaissés/match · '+
+            f'<b>Résistance</b> = % résultats positifs quand mené · <b>Régularité</b> = inverse écart-type · <b>Collectif</b> = nb buteurs différents'+
+            f'</div>',unsafe_allow_html=True)
 
-        st.markdown("---")
-
-        # -- Concentration offensive --
-        st.markdown("### Concentration offensive")
-        rows_conc=[]
-        for eq in EQUIPES:
-            dp=df[df["equipe_marque"]==eq]
-            if len(dp)==0: continue
-            bb=dp["joueur"].value_counts()
-            rows_conc.append({"equipe":eq,"top1_pct":bb.iloc[0]/len(dp)*100,"nb_buteurs":len(bb)})
-        conc=pd.DataFrame(rows_conc)
-        cg_c,cd_c=st.columns(2)
-        with cg_c:
-            st.markdown("#### Part du top buteur")
-            fig_c1=go.Figure()
-            for _,r in conc.sort_values("top1_pct",ascending=False).iterrows():
-                c_eq=COULEUR_EQUIPE.get(r["equipe"],D1_ROUGE)
-                fig_c1.add_trace(go.Bar(x=[r["top1_pct"]],y=[nc(r["equipe"])],orientation="h",
-                    marker_color=c_eq,text=[f'{r["top1_pct"]:.0f}%'],
-                    textposition="outside",textangle=0,showlegend=False,
-                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
-            fig_c1.update_yaxes(autorange="reversed")
-            st.plotly_chart(style_fig(fig_c1,max(280,28*len(conc))),use_container_width=True)
-        with cd_c:
-            st.markdown("#### Nb buteurs différents")
-            fig_c2=go.Figure()
-            for _,r in conc.sort_values("nb_buteurs",ascending=False).iterrows():
-                c_eq=COULEUR_EQUIPE.get(r["equipe"],D1_ROUGE)
-                fig_c2.add_trace(go.Bar(x=[r["nb_buteurs"]],y=[nc(r["equipe"])],orientation="h",
-                    marker_color=c_eq,text=[int(r["nb_buteurs"])],
-                    textposition="outside",textangle=0,showlegend=False,
-                    textfont=dict(size=13,color=D1_BLANC),cliponaxis=False))
-            fig_c2.update_yaxes(autorange="reversed")
-            st.plotly_chart(style_fig(fig_c2,max(280,28*len(conc))),use_container_width=True)
-
-        st.markdown("---")
-
-        # -- Radar comparatif --
-        st.markdown("### Radar comparatif")
-        eq_radar=st.multiselect("Équipes",EQUIPES,default=EQUIPES[:3],max_selections=4)
-        if len(eq_radar)>=2:
-            indicateurs=["Volume offensif","Solidité défensive","Résistance","Régularité","Collectif"]
-            def radar_vals(eq):
-                dp=df[df["equipe_marque"]==eq]; dc=df[df["equipe_encaisse"]==eq]
-                meq_r=matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]; nm=len(meq_r) or 1
-                vol_off=len(dp)/nm; enc_pm=len(dc)/nm
-                rs_r=analyser_retours_score(eq); menes=rs_r["mv"]+rs_r["mn"]+rs_r["md"]
-                resistance=(rs_r["mv"]+rs_r["mn"])/menes*100 if menes>0 else 50
-                bpm_l=[]
-                for _,m in meq_r.iterrows():
-                    dm2=df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
-                    bpm_l.append(int((dm2["equipe_marque"]==eq).sum()))
-                std=pd.Series(bpm_l).std(ddof=0) if len(bpm_l)>1 else 0
-                collectif=float(dp["joueur"].nunique())
-                return [vol_off,enc_pm,resistance,std,collectif]
-            all_vals={eq:radar_vals(eq) for eq in eq_radar}
-            all_matrix=pd.DataFrame(all_vals,index=indicateurs)
-            axes_inv={"Solidité défensive","Régularité"}
-            norm=all_matrix.copy()
-            for idx in indicateurs:
-                mn=all_matrix.loc[idx].min(); mx=all_matrix.loc[idx].max()
-                if mx!=mn:
-                    vn=(all_matrix.loc[idx]-mn)/(mx-mn)*100
-                    norm.loc[idx]=100-vn if idx in axes_inv else vn
-                else:
-                    norm.loc[idx]=50
-            fig_radar=go.Figure()
-            for eq in eq_radar:
-                vals=norm[eq].tolist(); raw=all_matrix[eq].tolist()
-                raw_labels=[f"{raw[0]:.1f} buts/match",f"{raw[1]:.1f} encaissés/match",
-                    f"{raw[2]:.0f}% résultat positif quand mené",f"écart-type {raw[3]:.1f}",f"{int(raw[4])} buteurs"]
-                coul=COULEUR_EQUIPE.get(eq,D1_ROUGE)
-                fig_radar.add_trace(go.Scatterpolar(
-                    r=vals+[vals[0]],theta=indicateurs+[indicateurs[0]],name=nc(eq),
-                    line=dict(color=coul,width=2.5),fill="toself",fillcolor=hex_to_rgba(coul,0.15),
-                    customdata=raw_labels+[raw_labels[0]],
-                    hovertemplate="<b>%{theta}</b><br>%{customdata}<extra></extra>"))
-            fig_radar.update_layout(polar=dict(
-                bgcolor="rgba(0,0,0,0)",
-                radialaxis=dict(visible=True,range=[0,100],gridcolor="rgba(255,255,255,.1)",tickfont=dict(size=9)),
-                angularaxis=dict(gridcolor="rgba(255,255,255,.1)",tickfont=dict(size=13,color=D1_BLANC))))
-            st.plotly_chart(style_fig(fig_radar,460),use_container_width=True)
-            st.markdown(
-                f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};border-radius:10px;padding:.8rem 1rem;font-size:.8rem;color:{D1_GRIS}">'
-                f'<b style="color:{D1_BLANC}">Lecture</b> — tous les axes "plus = mieux", normalisés 0-100. Survole pour les valeurs brutes.<br>'
-                f'<b>Volume offensif</b> = buts/match · <b>Solidité défensive</b> = inverse buts encaissés/match · '
-                f'<b>Résistance</b> = % résultats positifs quand mené &middot; <b>Régularité</b> = inverse de l\'écart-type &middot; <b>Collectif</b> = nb buteurs différents'
-                f'</div>',unsafe_allow_html=True)
-
-        st.markdown("---")
-
-        # -- Heatmap minute × équipe --
-        st.markdown("### Heatmap — quand chaque équipe marque (minutes)")
-        eq_hm=st.multiselect("Équipes",EQUIPES,default=[],key="hm_eq")
-        equipes_hm=eq_hm if eq_hm else EQUIPES
-        clt_hm=construire_classement(); ordre_hm=[e for e in clt_hm["equipe"].tolist() if e in equipes_hm]
-        pivot_hm2=(df[df["equipe_marque"].isin(equipes_hm)]
-            .groupby(["equipe_marque","minute"]).size().reset_index(name="buts")
-            .pivot(index="equipe_marque",columns="minute",values="buts")
-            .reindex(ordre_hm).reindex(columns=range(1,41),fill_value=0).fillna(0))
-        fig_hm2=go.Figure(go.Heatmap(
-            z=pivot_hm2.values,x=[f"{m}'" for m in range(1,41)],
-            y=[nc(e) for e in pivot_hm2.index],
-            colorscale=[[0,"rgba(38,24,28,1)"],[0.4,"rgba(140,10,24,0.7)"],[1,D1_ROUGE]],
-            text=[[str(int(v)) if v>0 else "" for v in row] for row in pivot_hm2.values],
-            texttemplate="%{text}",textfont=dict(size=10,color="white"),
-            hovertemplate="<b>%{y}</b> · %{x}<br>%{z} buts<extra></extra>",showscale=True,
-            colorbar=dict(len=0.8,thickness=12,tickfont=dict(size=10))))
-        fig_hm2.add_vline(x="20'",line_dash="dot",line_color=D1_GRIS,line_width=1.5,
-            annotation_text="Mi-temps",annotation_font_color=D1_GRIS,annotation_position="top")
-        fig_hm2.update_xaxes(tickfont=dict(size=10),
-            tickvals=[f"{m}'" for m in [1,5,10,15,20,25,30,35,40]])
-        fig_hm2.update_yaxes(tickfont=dict(size=11))
-        st.plotly_chart(style_fig(fig_hm2,max(300,38*len(ordre_hm))),use_container_width=True)
+    st.markdown("---")
+    st.markdown("### Heatmap — quand chaque équipe marque")
+    eq_hm=st.multiselect("Équipes",EQUIPES,default=[],key="hm_eq")
+    equipes_hm=eq_hm if eq_hm else EQUIPES
+    clt_hm=construire_classement(); ordre_hm=[e for e in clt_hm["equipe"].tolist() if e in equipes_hm]
+    pivot_hm2=(df[df["equipe_marque"].isin(equipes_hm)]
+        .groupby(["equipe_marque","minute"]).size().reset_index(name="buts")
+        .pivot(index="equipe_marque",columns="minute",values="buts")
+        .reindex(ordre_hm).reindex(columns=range(1,41),fill_value=0).fillna(0))
+    fig_hm2=go.Figure(go.Heatmap(
+        z=pivot_hm2.values,x=[f"{m}'" for m in range(1,41)],
+        y=[nc(e) for e in pivot_hm2.index],
+        colorscale=[[0,"rgba(38,24,28,1)"],[0.4,"rgba(140,10,24,0.7)"],[1,D1_ROUGE]],
+        text=[[str(int(v)) if v>0 else "" for v in row] for row in pivot_hm2.values],
+        texttemplate="%{text}",textfont=dict(size=10,color="white"),
+        hovertemplate="<b>%{y}</b> · %{x}<br>%{z} buts<extra></extra>",showscale=True,
+        colorbar=dict(len=0.8,thickness=12,tickfont=dict(size=10))))
+    fig_hm2.add_vline(x="20'",line_dash="dot",line_color=D1_GRIS,line_width=1.5,
+        annotation_text="Mi-temps",annotation_font_color=D1_GRIS,annotation_position="top")
+    fig_hm2.update_xaxes(tickfont=dict(size=10),
+        tickvals=[f"{m}'" for m in [1,5,10,15,20,25,30,35,40]])
+    fig_hm2.update_yaxes(tickfont=dict(size=11))
+    st.plotly_chart(style_fig(fig_hm2,max(300,38*len(ordre_hm))),use_container_width=True)
 
 
 elif page == "Confrontations":
