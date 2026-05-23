@@ -10,8 +10,9 @@ SQLite propre, prête pour l'appli Streamlit (app_buts.py).
 
 Étapes :
   1. lit la feuille principale "BUT D1 " -> tous les buts (source fiable)
-  2. lit les feuilles équipes (GOAL, Nantes, ACASA, Laval, MTP...) -> origine
-  3. rattache l'origine à chaque but par (équipe, journée, minute, période, buteur)
+  2. détecte AUTOMATIQUEMENT les feuilles équipes (toute feuille autre que la
+     principale, contenant une colonne origine) -> origine
+  3. rattache l'origine à chaque but par (journée, minute, période, buteur)
   4. normalise les libellés d'origine (placee/placée -> "Attaque placée", etc.)
   5. calcule la situation au moment du but (Menant / Égalité / Mené)
   6. écrit le tout dans futsal_d1.db
@@ -35,9 +36,11 @@ SCHEMA_PATH = "schema_buts.sql"
 # Nom de la feuille principale (attention à l'espace final dans ton fichier)
 FEUILLE_PRINCIPALE = "BUT D1 "
 
-# Feuilles "équipe" qui contiennent la colonne origine_but.
-# Ajoute simplement le nom d'une nouvelle feuille ici quand tu en crées une.
-FEUILLES_EQUIPES = ["GOAL", "Nantes", "ACASA", "Laval", "MTP"]
+# Les feuilles "équipe" (origines) sont DÉTECTÉES AUTOMATIQUEMENT :
+# toute feuille autre que la principale et possédant une colonne origine est
+# lue, quel que soit son nom ou sa casse (GOAL, NANTES, SPORTING, AVION...).
+# -> pour ajouter une équipe : crée son onglet dans l'Excel, relance le script.
+#    Plus besoin de modifier ce fichier.
 
 
 # ---------------------------------------------------------------------------
@@ -56,10 +59,16 @@ def sans_accents_min(s):
     """Minuscule sans accents, pour comparer/normaliser les libellés."""
     if s is None:
         return ""
-    s = s.lower().strip().replace("_", " ")
+    s = str(s).lower().strip().replace("_", " ")
     s = "".join(c for c in unicodedata.normalize("NFD", s)
                 if unicodedata.category(c) != "Mn")
     return " ".join(s.split())
+
+
+def est_feuille_principale(nom):
+    """Vrai si 'nom' désigne la feuille des buts (insensible casse/espaces)."""
+    a = sans_accents_min(nom)
+    return a == sans_accents_min(FEUILLE_PRINCIPALE) or a.startswith("but d1")
 
 
 # Table de normalisation des origines. Clé = forme sans accents/minuscule.
@@ -204,25 +213,28 @@ def lire_buts_principale(wb):
 
 def lire_origines(wb):
     """
-    Lit toutes les feuilles équipes -> dict {clé_rattachement: origine}.
+    Détecte automatiquement les feuilles équipes (toute feuille autre que la
+    principale, possédant une colonne origine) -> dict {clé_rattachement: origine}.
     En cas de doublon de clé, la 1re origine renseignée gagne.
     """
     origines = {}
-    for nom_feuille in FEUILLES_EQUIPES:
-        if nom_feuille not in wb.sheetnames:
-            print(f"  ! feuille '{nom_feuille}' absente, ignorée")
+    feuilles_lues = []
+    for nom_feuille in wb.sheetnames:
+        if est_feuille_principale(nom_feuille):
             continue
         ws = wb[nom_feuille]
         e = lire_entetes(ws)
+        c_origine = col(e, "origine but", "origine")
+        if c_origine is None:
+            print(f"  · feuille '{nom_feuille}' sans colonne origine, ignorée")
+            continue
+
         c_journee = col(e, "journee")
         c_periode = col(e, "periode")
         c_minute  = col(e, "minute")
         c_joueur  = col(e, "joueur")
-        c_origine = col(e, "origine but", "origine")
-        if c_origine is None:
-            print(f"  ! feuille '{nom_feuille}' sans colonne origine, ignorée")
-            continue
 
+        n_avant = len(origines)
         for r in range(2, ws.max_row + 1):
             journee = ws.cell(row=r, column=c_journee).value
             joueur  = nettoie(ws.cell(row=r, column=c_joueur).value)
@@ -241,6 +253,10 @@ def lire_origines(wb):
             )
             if cle not in origines:
                 origines[cle] = origine
+        feuilles_lues.append(f"{nom_feuille} (+{len(origines) - n_avant})")
+
+    if feuilles_lues:
+        print("  feuilles origines détectées : " + ", ".join(feuilles_lues))
     return origines
 
 
@@ -331,6 +347,14 @@ def main():
     print(f"  Journées            : {j1} à {j2}")
     cur.execute("SELECT COUNT(*) FROM but WHERE origine IS NOT NULL")
     print(f"  Buts avec origine   : {cur.fetchone()[0]}")
+    print()
+    print("  Couverture origine par équipe :")
+    cur.execute("""SELECT equipe_marque, COUNT(*),
+                          SUM(CASE WHEN origine IS NOT NULL THEN 1 ELSE 0 END)
+                   FROM but GROUP BY equipe_marque ORDER BY 2 DESC""")
+    for eq, tot, ori in cur.fetchall():
+        pct = int(100 * ori / tot) if tot else 0
+        print(f"    {eq:<28} {ori:>3}/{tot:<3} {pct:>3}%")
     print()
     print("  Top 5 buteurs :")
     cur.execute("""SELECT joueur, COUNT(*) n FROM but
