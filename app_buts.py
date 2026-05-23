@@ -688,6 +688,194 @@ def pdf_match(journee, dom, ext):
     return buf
 
 
+def pdf_rapport_complet(eq):
+    """PDF complet style rapport Laval — fond blanc, couleur équipe."""
+    buf  = BytesIO()
+    doc  = SimpleDocTemplate(buf, pagesize=A4,
+                              topMargin=1.2*cm, bottomMargin=1.5*cm,
+                              leftMargin=1.8*cm, rightMargin=1.8*cm)
+    coul_hex = COULEUR_EQUIPE.get(eq, D1_ROUGE)
+    COUL   = colors.HexColor(coul_hex)
+    BLANC  = colors.white
+    GRIS   = colors.HexColor("#F7F4F5")
+    BORD   = colors.HexColor("#E0D8DA")
+    TEXTE  = colors.HexColor("#1A1A1E")
+    TEXTE_G= colors.HexColor("#6B6066")
+    stl = getSampleStyleSheet()
+    def ps(name, **kw): return ParagraphStyle(name, parent=stl["Normal"], **kw)
+    titre_section = ps("ts", textColor=BLANC, fontSize=11, fontName="Helvetica-Bold",
+                        backColor=COUL, borderPadding=(6,8,6,8), spaceBefore=14, spaceAfter=6)
+    sous_titre    = ps("ss", textColor=COUL, fontSize=10, fontName="Helvetica-Bold", spaceBefore=8, spaceAfter=3)
+    corps         = ps("co", textColor=TEXTE, fontSize=8.5, spaceBefore=1, spaceAfter=1)
+    gris_stl      = ps("gr", textColor=TEXTE_G, fontSize=8, spaceBefore=1, spaceAfter=1)
+    def tbl_base():
+        return [("FONTSIZE",(0,0),(-1,-1),8.5),("TOPPADDING",(0,0),(-1,-1),4),
+                ("BOTTOMPADDING",(0,0),(-1,-1),4),("GRID",(0,0),(-1,-1),0.4,BORD),
+                ("VALIGN",(0,0),(-1,-1),"MIDDLE"),("ALIGN",(1,0),(-1,-1),"CENTER")]
+    def hdr_row():
+        return [("BACKGROUND",(0,0),(-1,0),COUL),("TEXTCOLOR",(0,0),(-1,0),BLANC),
+                ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold")]
+    def zebra():
+        return [("ROWBACKGROUNDS",(0,1),(-1,-1),[BLANC,GRIS])]
+    def mini_b(val, mx, w=5*cm, h=9, cf=None):
+        cf2=colors.HexColor(cf) if cf else COUL
+        d=Drawing(w,h+2)
+        d.add(Rect(0,0,w,h,fillColor=colors.HexColor("#F0EDED"),strokeColor=None))
+        if mx>0: d.add(Rect(0,0,val/mx*w,h,fillColor=cf2,strokeColor=None))
+        return d
+
+    matchs   = _get_matchs(); clt = construire_classement()
+    rang_row = clt[clt["equipe"]==eq].iloc[0]; rang=clt[clt["equipe"]==eq].index[0]+1
+    dpour=df[df["equipe_marque"]==eq]; dcontre=df[df["equipe_encaisse"]==eq]
+    meq=matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]; n_m=len(meq) or 1
+    pb=analyser_premier_but(eq); de_s=analyser_dom_ext(eq)
+    rs_d=analyser_retours_score(eq); mo_d=analyser_momentum(eq)
+    vt6,nt6,dt6=analyser_bilan_top6(eq); tot_t6=vt6+nt6+dt6
+    vd,nd,dd=de_s["dom"]; ve,ne_,de_=de_s["ext"]
+    td=vd+nd+dd or 1; te=ve+ne_+de_ or 1
+    m_tot=pb["marque"]["total"] or 1; e_tot=pb["encaisse"]["total"] or 1
+    mw=pb["marque"]["V"]/m_tot*100; ew=pb["encaisse"]["V"]/e_tot*100
+    elems=[]
+
+    # Header
+    logo_p=LOGOS_DIR/f"{eq}.png"
+    hdr_txt=Paragraph(f'<font size="18" color="{coul_hex}"><b>{eq}</b></font><br/>'
+                      f'<font size="9" color="#6B6066">D1 Futsal · Saison 2025–2026 · J1→J{max(JOURNEES)}</font>',
+                      ps("hdr",leading=20))
+    if logo_p.exists():
+        try:
+            li=RLImage(str(logo_p),width=2*cm,height=2*cm)
+            t_hdr=Table([[hdr_txt,li]],colWidths=[13.5*cm,3*cm])
+        except: t_hdr=Table([[hdr_txt,""]],colWidths=[13.5*cm,3*cm])
+    else: t_hdr=Table([[hdr_txt,""]],colWidths=[13.5*cm,3*cm])
+    t_hdr.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("ALIGN",(1,0),(1,0),"RIGHT"),
+                                ("LINEBELOW",(0,0),(-1,0),2,COUL),("BOTTOMPADDING",(0,0),(-1,-1),8)]))
+    elems+=[t_hdr,Spacer(1,8)]
+
+    # Section 01
+    elems.append(Paragraph("SECTION 01 — Vue d'ensemble",titre_section))
+    tv=int(rang_row["V"])/n_m*100
+    kd=[["Points","Buts marqués","Buts encaissés","Taux de victoire"],
+        [f'{int(rang_row["Pts"])}',f'{int(rang_row["BP"])}',f'{int(rang_row["BC"])}',f'{tv:.0f}%'],
+        [f'{int(rang_row["Pts"])/n_m:.1f}/match',f'{len(dpour)/n_m:.1f}/match',
+         f'{len(dcontre)/n_m:.1f}/match',f'{int(rang_row["V"])}V·{int(rang_row["N"])}N·{int(rang_row["D"])}D']]
+    kd_p=[[Paragraph(f'<font color="{coul_hex}"><b>{x}</b></font>',ps("k",alignment=1)) if i==1 else
+           Paragraph(x,gris_stl if i==2 else ps("kh",fontName="Helvetica-Bold",fontSize=8.5)) for x in row]
+          for i,row in enumerate(kd)]
+    tk=Table(kd_p,colWidths=[4.1*cm]*4)
+    tk.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                             ("GRID",(0,0),(-1,-1),0.5,BORD),("ROWBACKGROUNDS",(0,0),(-1,-1),[GRIS,BLANC,GRIS]),
+                             ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
+    elems+=[tk,Spacer(1,4)]
+    extra=[[f"Position au classement",Paragraph(f'<font color="{coul_hex}"><b>{rang}e</b></font>',corps)]]
+    if tot_t6: extra.append(["Bilan vs Top 6",Paragraph(f'<font color="{coul_hex}"><b>{vt6}V·{nt6}N·{dt6}D ({vt6/tot_t6*100:.0f}%)</b></font>',corps)])
+    te_=Table(extra,colWidths=[9*cm,7.5*cm])
+    te_.setStyle(TableStyle([("FONTSIZE",(0,0),(-1,-1),8.5),("TOPPADDING",(0,0),(-1,-1),3),
+                              ("BOTTOMPADDING",(0,0),(-1,-1),3),("LINEBELOW",(0,0),(-1,-1),0.3,BORD)]))
+    elems+=[te_,Spacer(1,6)]
+
+    # Fil de la saison
+    elems.append(Paragraph("Fil de la saison",sous_titre))
+    fd=[["J","Adversaire","Score","Rés."]]
+    for _,m in meq.sort_values("journee").iterrows():
+        is_dom=(m["dom"]==eq); adv=m["ext"] if is_dom else m["dom"]
+        sc=f'{m["score_dom"]}–{m["score_ext"]}' if is_dom else f'{m["score_ext"]}–{m["score_dom"]}'
+        r=m["res_dom"] if is_dom else m["res_ext"]; loc="Dom" if is_dom else "Ext"
+        rc="#27AE60" if r=="V" else("#C9A24B" if r=="N" else "#C00018")
+        fd.append([f'J{int(m["journee"])} ({loc})',nc(adv),sc,
+                   Paragraph(f'<font color="{rc}"><b>{r}</b></font>',corps)])
+    tf=Table(fd,colWidths=[2.5*cm,8.5*cm,2.5*cm,3*cm],repeatRows=1)
+    tf.setStyle(TableStyle(tbl_base()+hdr_row()+zebra()))
+    elems+=[tf,Spacer(1,6)]
+
+    # Section 02
+    elems.append(Paragraph("SECTION 02 — Analyse Tactique",titre_section))
+    elems.append(Paragraph("Impact du premier but",sous_titre))
+    pb_d=[["","Matchs","Victoires","Nuls","Défaites","% Vic."],
+          ["Marque 1er",pb["marque"]["total"],pb["marque"]["V"],pb["marque"]["N"],pb["marque"]["D"],f"{mw:.0f}%"],
+          ["Encaisse 1er",pb["encaisse"]["total"],pb["encaisse"]["V"],pb["encaisse"]["N"],pb["encaisse"]["D"],f"{ew:.0f}%"]]
+    tp=Table(pb_d,colWidths=[5*cm,2*cm,2*cm,2*cm,2*cm,3*cm])
+    tp.setStyle(TableStyle(tbl_base()+hdr_row()+zebra()+
+                           [("TEXTCOLOR",(5,1),(5,-1),COUL),("FONTNAME",(5,1),(5,-1),"Helvetica-Bold")]))
+    elems+=[tp,Spacer(1,5)]
+    elems.append(Paragraph("Domicile vs Extérieur",sous_titre))
+    de_d=[["","V","N","D","% Vic."],["Domicile",vd,nd,dd,f"{vd/td*100:.0f}%"],["Extérieur",ve,ne_,de_,f"{ve/te*100:.0f}%"]]
+    td2=Table(de_d,colWidths=[5*cm,2.5*cm,2.5*cm,2.5*cm,3.5*cm])
+    td2.setStyle(TableStyle(tbl_base()+hdr_row()+zebra()+
+                            [("TEXTCOLOR",(4,1),(4,-1),COUL),("FONTNAME",(4,1),(4,-1),"Helvetica-Bold")]))
+    elems+=[td2,Spacer(1,5)]
+    elems.append(Paragraph("Retours au score",sous_titre))
+    rs_rows=[["Scénario","Matchs"]]
+    for lab,val,cf in [("Jamais mené",rs_d["jamais"],D1_VERT),("Est mené → Victoire",rs_d["mv"],coul_hex),
+                        ("Est mené → Nul",rs_d["mn"],D1_OR),("Est mené → Défaite",rs_d["md"],D1_ROUGE)]:
+        rs_rows.append([lab,Paragraph(f'<font color="{cf}"><b>{val}</b></font>',corps)])
+    tr=Table(rs_rows,colWidths=[10*cm,6*cm])
+    tr.setStyle(TableStyle(tbl_base()+hdr_row()+zebra()))
+    elems+=[tr,Spacer(1,5)]
+    elems.append(Paragraph("Momentum après un but (min. moyennes)",sous_titre))
+    mo_rows=[["Transition","Minutes"]]
+    mo_cols={"Marque → Marque":D1_VERT,"Marque → Encaisse":D1_OR,"Encaisse → Marque":coul_hex,"Encaisse → Encaisse":D1_ROUGE}
+    for lab,val in mo_d.items():
+        mo_rows.append([lab,Paragraph(f'<font color="{mo_cols.get(lab,D1_GRIS)}"><b>{val} min</b></font>' if val else "—",corps)])
+    tm=Table(mo_rows,colWidths=[10*cm,6*cm])
+    tm.setStyle(TableStyle(tbl_base()+hdr_row()+zebra()))
+    elems+=[tm,Spacer(1,6)]
+
+    # Section 03
+    elems.append(Paragraph("SECTION 03 — Analyse Temporelle",titre_section))
+    mins_p=dpour["minute"].dropna().astype(int)
+    mins_c=dcontre["minute"].dropna().astype(int)
+    tr_p=pd.cut(mins_p,bins=range(0,41,5),labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
+    tr_c=pd.cut(mins_c,bins=range(0,41,5),labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
+    mx_tr=max(tr_p.max(),tr_c.max(),1)
+    tr_rows=[["Tranche","Marqués","","Encaissés",""]]
+    for tr in tr_p.index:
+        vp=int(tr_p[tr]); vc=int(tr_c[tr])
+        d_p=Drawing(6*cm,10); d_p.add(Rect(0,1,6*cm,8,fillColor=colors.HexColor("#F0E8EA"),strokeColor=None))
+        if vp>0: d_p.add(Rect(0,1,vp/mx_tr*6*cm,8,fillColor=COUL,strokeColor=None))
+        d_c=Drawing(3.5*cm,10); d_c.add(Rect(0,1,3.5*cm,8,fillColor=colors.HexColor("#F0E8EA"),strokeColor=None))
+        if vc>0: d_c.add(Rect(0,1,vc/mx_tr*3.5*cm,8,fillColor=colors.HexColor(D1_ROUGE),strokeColor=None))
+        tr_rows.append([str(tr),Paragraph(f'<font color="{coul_hex}"><b>{vp}</b></font>',corps),d_p,
+                        Paragraph(f'<font color="#C00018"><b>{vc}</b></font>',corps),d_c])
+    tt=Table(tr_rows,colWidths=[1.8*cm,1.2*cm,6*cm,1.2*cm,4.5*cm],repeatRows=1)
+    tt.setStyle(TableStyle(tbl_base()+hdr_row()+zebra()))
+    elems+=[tt,Spacer(1,6)]
+
+    # Section 04
+    elems.append(Paragraph("SECTION 04 — Analyse des Buteurs",titre_section))
+    bb=dpour["joueur"].value_counts(); tot_b=len(dpour) or 1
+    elems.append(Paragraph(f'Top 3 : {bb.head(3).sum()} buts ({bb.head(3).sum()/tot_b*100:.0f}%)',gris_stl))
+    elems.append(Spacer(1,4))
+    for joueur,nb in bb.head(10).items():
+        row_data=[[Paragraph(nj(joueur),corps),
+                   Paragraph(f'<font color="{coul_hex}"><b>{nb}</b></font>',ps("bj",alignment=1)),
+                   mini_b(nb,int(bb.max()),7*cm),Paragraph(f'{nb/tot_b*100:.0f}%',gris_stl)]]
+        tr2=Table(row_data,colWidths=[4.5*cm,1*cm,7*cm,1.5*cm])
+        tr2.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),2),
+                                  ("BOTTOMPADDING",(0,0),(-1,-1),2),("LINEBELOW",(0,0),(-1,-1),0.2,BORD)]))
+        elems.append(tr2)
+    elems.append(Spacer(1,6))
+
+    # Section 05
+    if eq in EQUIPES_AVEC_ORIGINE:
+        elems.append(Paragraph("SECTION 05 — Origines des Buts",titre_section))
+        oo=dpour.loc[dpour["origine"].notna(),"origine"].value_counts()
+        n_r=int(dpour["origine"].notna().sum())
+        elems.append(Paragraph(f'{n_r} buts analysés sur {tot_b}',gris_stl))
+        elems.append(Spacer(1,4))
+        for orig,nb in oo.items():
+            row_data=[[Paragraph(orig,corps),
+                       Paragraph(f'<font color="{coul_hex}"><b>{nb}</b></font>',ps("oo",alignment=1)),
+                       mini_b(nb,int(oo.max()),7*cm),Paragraph(f'{nb/n_r*100:.0f}%',gris_stl)]]
+            tr3=Table(row_data,colWidths=[4.5*cm,1*cm,7*cm,1.5*cm])
+            tr3.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),2),
+                                      ("BOTTOMPADDING",(0,0),(-1,-1),2),("LINEBELOW",(0,0),(-1,-1),0.2,BORD)]))
+            elems.append(tr3)
+
+    doc.build(elems); buf.seek(0)
+    return buf
+
+
 def bloc_export(pdf_buffer, nom_fichier, label="Exporter en PDF", csv_df=None, csv_nom=None):
     """Bloc d'export uniforme placé en bas de page."""
     st.markdown("<hr style='border:none;border-top:1px solid #6C1420;margin:1.2rem 0 .6rem 0'>",
@@ -712,6 +900,156 @@ def bloc_export(pdf_buffer, nom_fichier, label="Exporter en PDF", csv_df=None, c
 # ============================================================================
 # PAGE — ACCUEIL
 # ============================================================================
+# FONCTIONS D'ANALYSE TACTIQUE
+# ============================================================================
+
+def _get_matchs():
+    return construire_matchs()
+
+def analyser_premier_but(eq):
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    res = {"marque":{"V":0,"N":0,"D":0,"total":0},
+           "encaisse":{"V":0,"N":0,"D":0,"total":0}}
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
+                (df["equipe_exterieure"]==m["ext"])]
+        if len(dm)==0: continue
+        first = dm.sort_values(["periode","minute"]).iloc[0]
+        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
+        cle = "marque" if first["equipe_marque"]==eq else "encaisse"
+        res[cle][r]+=1; res[cle]["total"]+=1
+    return res
+
+def analyser_dom_ext(eq):
+    matchs = _get_matchs()
+    dom_m = matchs[matchs["dom"]==eq]; ext_m = matchs[matchs["ext"]==eq]
+    vd=int((dom_m["res_dom"]=="V").sum()); nd=int((dom_m["res_dom"]=="N").sum()); dd=int((dom_m["res_dom"]=="D").sum())
+    ve=int((ext_m["res_ext"]=="V").sum()); ne=int((ext_m["res_ext"]=="N").sum()); de=int((ext_m["res_ext"]=="D").sum())
+    return {"dom":(vd,nd,dd),"ext":(ve,ne,de)}
+
+def analyser_retours_score(eq):
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    jamais=0; mv=0; mn=0; md=0
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
+                (df["equipe_exterieure"]==m["ext"])]
+        goals = dm.sort_values(["periode","minute"]); is_dom=(m["dom"]==eq)
+        was_trailing=False; sd=0; se=0
+        for _,b in goals.iterrows():
+            if b["equipe_marque"]==m["dom"]: sd+=1
+            else: se+=1
+            if (sd if is_dom else se)<(se if is_dom else sd): was_trailing=True; break
+        r = m["res_dom"] if is_dom else m["res_ext"]
+        if not was_trailing: jamais+=1
+        elif r=="V": mv+=1
+        elif r=="N": mn+=1
+        else: md+=1
+    return {"jamais":jamais,"mv":mv,"mn":mn,"md":md}
+
+def analyser_momentum(eq):
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    trans = {"MM":[],"ME":[],"EM":[],"EE":[]}
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
+                (df["equipe_exterieure"]==m["ext"])]
+        if len(dm)<2: continue
+        goals = dm.sort_values(["periode","minute"])
+        mins = goals["minute"].values; teams = goals["equipe_marque"].values
+        for i in range(len(goals)-1):
+            delta = max(1,int(mins[i+1])-int(mins[i]))
+            t1="M" if teams[i]==eq else "E"; t2="M" if teams[i+1]==eq else "E"
+            trans[t1+t2].append(delta)
+    labels={"MM":"Marque → Marque","ME":"Marque → Encaisse",
+            "EM":"Encaisse → Marque","EE":"Encaisse → Encaisse"}
+    return {labels[k]:(round(sum(v)/len(v)) if v else None) for k,v in trans.items()}
+
+def analyser_bilan_top6(eq):
+    matchs = _get_matchs()
+    clt = construire_classement()
+    top6 = [e for e in clt.head(6)["equipe"].tolist() if e!=eq]
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    bvt = meq[(meq["dom"].isin(top6))|(meq["ext"].isin(top6))]
+    v=0; n=0; d=0
+    for _,m in bvt.iterrows():
+        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
+        if r=="V": v+=1
+        elif r=="N": n+=1
+        else: d+=1
+    return v,n,d
+
+def _carte_stat(titre, valeur_principale, sous_texte=None, couleur=None):
+    c = couleur or D1_ROUGE
+    html = (
+        f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+        f'border-top:4px solid {c};border-radius:12px;padding:1.2rem 1.3rem;height:100%;min-height:110px">'
+        f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.5rem">{titre}</div>'
+        f'<div style="font-size:2.4rem;font-weight:900;color:{c};line-height:1.1">{valeur_principale}</div>'
+    )
+    if sous_texte:
+        html += f'<div style="font-size:.85rem;color:{D1_GRIS};margin-top:.4rem;font-weight:500">{sous_texte}</div>'
+    html += '</div>'
+    return html
+
+# ============================================================================
+# FONCTIONS NOUVELLES STATS
+# ============================================================================
+
+def buts_clutch_eq(eq):
+    """Buts marqués entre la 36e et la 40e minute."""
+    dp = df[df["equipe_marque"]==eq]
+    clutch = dp[dp["minute"] >= 36]
+    return int(len(clutch)), int(len(dp))
+
+def impact_but_rapide(eq):
+    """Si l'équipe marque dans les 3 premières minutes, quel résultat ?"""
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    res = {"total":0,"V":0,"N":0,"D":0}
+    sans = {"total":0,"V":0,"N":0,"D":0}
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
+        early = dm[(dm["minute"]<=3)&(dm["equipe_marque"]==eq)]
+        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
+        if len(early)>0:
+            res[r]+=1; res["total"]+=1
+        else:
+            sans[r]+=1; sans["total"]+=1
+    return res, sans
+
+def retournements_eq(eq):
+    """Matchs où l'équipe était menée à la mi-temps."""
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    mene_ht=0; v_after=0; n_after=0; d_after=0
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
+        is_dom=(m["dom"]==eq)
+        p1=dm[dm["periode"]==1]
+        sd_ht=int((p1["equipe_marque"]==m["dom"]).sum())
+        se_ht=int((p1["equipe_marque"]==m["ext"]).sum())
+        seq=sd_ht if is_dom else se_ht
+        saq=se_ht if is_dom else sd_ht
+        if seq<saq:
+            mene_ht+=1
+            r=m["res_dom"] if is_dom else m["res_ext"]
+            if r=="V": v_after+=1
+            elif r=="N": n_after+=1
+            else: d_after+=1
+    return {"mene_ht":mene_ht,"v":v_after,"n":n_after,"d":d_after}
+
+def buteurs_clutch_eq(eq):
+    """Buteurs avec le plus de buts entre 36' et 40'."""
+    return df[(df["equipe_marque"]==eq)&(df["minute"]>=36)]["joueur"].value_counts()
+
+# ============================================================================
+# PAGE — FICHE ÉQUIPE (fusion Vue équipe + Analyse Tactique + Scouting + Origines)
+# ============================================================================
+
+
 if page == "Accueil":
     st.title("D1 Futsal — Vue d'ensemble")
     matchs = construire_matchs()
@@ -1366,15 +1704,15 @@ elif page == "Dynamique de score":
     eq=st.selectbox("Périmètre",["Tout le championnat"]+EQUIPES,key="ds_eq")
     d=df if eq=="Tout le championnat" else df[df["equipe_marque"]==eq]
     d=d[d["situation"].notna()]
-    ordre=["Est mené","Égalité","Menant"]
-    coul_sit={"Est mené":D1_ROUGE,"Égalité":D1_OR,"Menant":D1_VERT}
+    ordre=["Mené","Égalité","Menant"]
+    coul_sit={"Mené":D1_ROUGE,"Égalité":D1_OR,"Menant":D1_VERT}
     sit=d["situation"].value_counts().reindex(ordre,fill_value=0)
     tot=sit.sum() or 1
     c1,c2,c3=st.columns(3)
-    c1.metric("Est mené",int(sit["Est mené"]),f"{sit['Est mené']/tot*100:.0f}%")
+    c1.metric("Est mené",int(sit["Mené"]),f"{sit['Mené']/tot*100:.0f}%")
     c2.metric("À égalité",int(sit["Égalité"]),f"{sit['Égalité']/tot*100:.0f}%")
     c3.metric("En menant",int(sit["Menant"]),f"{sit['Menant']/tot*100:.0f}%")
-    fig=go.Figure(go.Bar(x=ordre,y=sit.values,
+    fig=go.Figure(go.Bar(x=["Est mené","Égalité","Menant"],y=sit.values,
                          marker_color=[coul_sit[s] for s in ordre],
                          text=[f"{v}  ({v/tot*100:.0f}%)" for v in sit.values],
                          textposition="outside",textangle=0,
@@ -1388,7 +1726,7 @@ elif page == "Dynamique de score":
             de=df[(df["equipe_marque"]==e)&(df["situation"].notna())]
             if len(de):
                 rows.append({"Équipe":e,
-                    "pct_mené":(de["situation"]=="Est mené").mean()*100,
+                    "pct_mené":(de["situation"]=="Mené").mean()*100,
                     "pct_egal":(de["situation"]=="Égalité").mean()*100,
                     "pct_men": (de["situation"]=="Menant").mean()*100})
         comp=pd.DataFrame(rows)
@@ -1677,154 +2015,6 @@ if page == "Rapport équipe":
                 f"rapport_D1_{eq[:20].replace(' ','_')}_J{max(JOURNEES)}.pdf",
                 f"Générer le rapport — {eq}")
 
-# ============================================================================
-# FONCTIONS D'ANALYSE TACTIQUE
-# ============================================================================
-
-def _get_matchs():
-    return construire_matchs()
-
-def analyser_premier_but(eq):
-    matchs = _get_matchs()
-    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    res = {"marque":{"V":0,"N":0,"D":0,"total":0},
-           "encaisse":{"V":0,"N":0,"D":0,"total":0}}
-    for _,m in meq.iterrows():
-        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
-                (df["equipe_exterieure"]==m["ext"])]
-        if len(dm)==0: continue
-        first = dm.sort_values(["periode","minute"]).iloc[0]
-        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
-        cle = "marque" if first["equipe_marque"]==eq else "encaisse"
-        res[cle][r]+=1; res[cle]["total"]+=1
-    return res
-
-def analyser_dom_ext(eq):
-    matchs = _get_matchs()
-    dom_m = matchs[matchs["dom"]==eq]; ext_m = matchs[matchs["ext"]==eq]
-    vd=int((dom_m["res_dom"]=="V").sum()); nd=int((dom_m["res_dom"]=="N").sum()); dd=int((dom_m["res_dom"]=="D").sum())
-    ve=int((ext_m["res_ext"]=="V").sum()); ne=int((ext_m["res_ext"]=="N").sum()); de=int((ext_m["res_ext"]=="D").sum())
-    return {"dom":(vd,nd,dd),"ext":(ve,ne,de)}
-
-def analyser_retours_score(eq):
-    matchs = _get_matchs()
-    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    jamais=0; mv=0; mn=0; md=0
-    for _,m in meq.iterrows():
-        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
-                (df["equipe_exterieure"]==m["ext"])]
-        goals = dm.sort_values(["periode","minute"]); is_dom=(m["dom"]==eq)
-        was_trailing=False; sd=0; se=0
-        for _,b in goals.iterrows():
-            if b["equipe_marque"]==m["dom"]: sd+=1
-            else: se+=1
-            if (sd if is_dom else se)<(se if is_dom else sd): was_trailing=True; break
-        r = m["res_dom"] if is_dom else m["res_ext"]
-        if not was_trailing: jamais+=1
-        elif r=="V": mv+=1
-        elif r=="N": mn+=1
-        else: md+=1
-    return {"jamais":jamais,"mv":mv,"mn":mn,"md":md}
-
-def analyser_momentum(eq):
-    matchs = _get_matchs()
-    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    trans = {"MM":[],"ME":[],"EM":[],"EE":[]}
-    for _,m in meq.iterrows():
-        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
-                (df["equipe_exterieure"]==m["ext"])]
-        if len(dm)<2: continue
-        goals = dm.sort_values(["periode","minute"])
-        mins = goals["minute"].values; teams = goals["equipe_marque"].values
-        for i in range(len(goals)-1):
-            delta = max(1,int(mins[i+1])-int(mins[i]))
-            t1="M" if teams[i]==eq else "E"; t2="M" if teams[i+1]==eq else "E"
-            trans[t1+t2].append(delta)
-    labels={"MM":"Marque → Marque","ME":"Marque → Encaisse",
-            "EM":"Encaisse → Marque","EE":"Encaisse → Encaisse"}
-    return {labels[k]:(round(sum(v)/len(v)) if v else None) for k,v in trans.items()}
-
-def analyser_bilan_top6(eq):
-    matchs = _get_matchs()
-    clt = construire_classement()
-    top6 = [e for e in clt.head(6)["equipe"].tolist() if e!=eq]
-    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    bvt = meq[(meq["dom"].isin(top6))|(meq["ext"].isin(top6))]
-    v=0; n=0; d=0
-    for _,m in bvt.iterrows():
-        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
-        if r=="V": v+=1
-        elif r=="N": n+=1
-        else: d+=1
-    return v,n,d
-
-def _carte_stat(titre, valeur_principale, sous_texte=None, couleur=None):
-    c = couleur or D1_ROUGE
-    html = (
-        f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
-        f'border-top:4px solid {c};border-radius:12px;padding:1.2rem 1.3rem;height:100%;min-height:110px">'
-        f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
-        f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.5rem">{titre}</div>'
-        f'<div style="font-size:2.4rem;font-weight:900;color:{c};line-height:1.1">{valeur_principale}</div>'
-    )
-    if sous_texte:
-        html += f'<div style="font-size:.85rem;color:{D1_GRIS};margin-top:.4rem;font-weight:500">{sous_texte}</div>'
-    html += '</div>'
-    return html
-
-# ============================================================================
-# FONCTIONS NOUVELLES STATS
-# ============================================================================
-
-def buts_clutch_eq(eq):
-    """Buts marqués entre la 36e et la 40e minute."""
-    dp = df[df["equipe_marque"]==eq]
-    clutch = dp[dp["minute"] >= 36]
-    return int(len(clutch)), int(len(dp))
-
-def impact_but_rapide(eq):
-    """Si l'équipe marque dans les 3 premières minutes, quel résultat ?"""
-    matchs = _get_matchs()
-    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    res = {"total":0,"V":0,"N":0,"D":0}
-    sans = {"total":0,"V":0,"N":0,"D":0}
-    for _,m in meq.iterrows():
-        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
-        early = dm[(dm["minute"]<=3)&(dm["equipe_marque"]==eq)]
-        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
-        if len(early)>0:
-            res[r]+=1; res["total"]+=1
-        else:
-            sans[r]+=1; sans["total"]+=1
-    return res, sans
-
-def retournements_eq(eq):
-    """Matchs où l'équipe était menée à la mi-temps."""
-    matchs = _get_matchs()
-    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
-    mene_ht=0; v_after=0; n_after=0; d_after=0
-    for _,m in meq.iterrows():
-        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
-        is_dom=(m["dom"]==eq)
-        p1=dm[dm["periode"]==1]
-        sd_ht=int((p1["equipe_marque"]==m["dom"]).sum())
-        se_ht=int((p1["equipe_marque"]==m["ext"]).sum())
-        seq=sd_ht if is_dom else se_ht
-        saq=se_ht if is_dom else sd_ht
-        if seq<saq:
-            mene_ht+=1
-            r=m["res_dom"] if is_dom else m["res_ext"]
-            if r=="V": v_after+=1
-            elif r=="N": n_after+=1
-            else: d_after+=1
-    return {"mene_ht":mene_ht,"v":v_after,"n":n_after,"d":d_after}
-
-def buteurs_clutch_eq(eq):
-    """Buteurs avec le plus de buts entre 36' et 40'."""
-    return df[(df["equipe_marque"]==eq)&(df["minute"]>=36)]["joueur"].value_counts()
-
-# ============================================================================
-# PAGE — FICHE ÉQUIPE (fusion Vue équipe + Analyse Tactique + Scouting + Origines)
 # ============================================================================
 if page == "Fiche équipe":
     st.title("Fiche équipe")
