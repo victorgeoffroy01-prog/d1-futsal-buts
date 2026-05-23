@@ -153,7 +153,7 @@ _CSS_CLT = f"""
     font-size:.62rem;font-weight:700;text-align:center;line-height:17px;margin:1px}}
 .fr-V{{background:{D1_VERT};color:white}}
 .fr-N{{background:{D1_OR};color:#1a1a1e}}
-.fr-D{{background:{D1_ROUGE};color:white}}
+.fr-D{{background:{D1_DANGER};color:white}}
 .note{{color:{D1_GRIS};font-size:.76rem;font-style:italic;margin:.15rem 0}}
 .pod{{background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};border-radius:11px;padding:.9rem;text-align:center}}
 .tag{{display:inline-block;padding:.12rem .5rem;border-radius:4px;font-weight:600;font-size:.75rem}}
