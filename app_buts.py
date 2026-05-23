@@ -32,17 +32,17 @@ DB_PATH   = "futsal_d1.db"
 LOGO_D1   = Path("D1_Futsal_logo.png")
 LOGOS_DIR = Path("logos")
 
-D1_ROUGE       = "#C00018"
-D1_ROUGE_CLAIR = "#E11030"
-D1_BORDEAUX    = "#540C18"
-D1_BORDEAUX_2  = "#6C1420"
-D1_ANTHRACITE  = "#1A1A1E"
-D1_CARTE       = "#26181C"
-D1_BLANC       = "#F5F2F3"
-D1_GRIS        = "#9A8E91"
-D1_OR          = "#C9A24B"
-D1_VERT        = "#27AE60"
-D1_BLEU        = "#3A7BD5"
+D1_ROUGE       = "#0096C7"
+D1_ROUGE_CLAIR = "#48CAE4"
+D1_BORDEAUX    = "#1A1E2E"
+D1_BORDEAUX_2  = "#252A3A"
+D1_ANTHRACITE  = "#0F1117"
+D1_CARTE       = "#1A1E2E"
+D1_BLANC       = "#E8EDF2"
+D1_GRIS        = "#8895A7"
+D1_OR          = "#F4A261"
+D1_VERT        = "#2DC653"
+D1_BLEU        = "#0096C7"
 
 # Couleurs issues des logos (extraites + ajustées pour lisibilité)
 COULEUR_EQUIPE = {
@@ -82,7 +82,7 @@ h2,h3{{color:{D1_BLANC}!important;font-weight:600!important}}
 h3{{font-size:.98rem!important;margin-top:1rem!important;margin-bottom:.25rem!important;
     border-left:3px solid {D1_ROUGE};padding-left:.5rem}}
 p,label,span,div{{color:{D1_BLANC}}}
-[data-testid="stSidebar"]{{background:{D1_BORDEAUX};border-right:1px solid {D1_BORDEAUX_2};
+[data-testid="stSidebar"]{{background:linear-gradient(180deg,{D1_BORDEAUX} 0%,#0A0E18 100%);border-right:1px solid {D1_BORDEAUX_2};
     min-width:255px!important;max-width:255px!important}}
 [data-testid="stSidebar"] *{{color:{D1_BLANC}!important}}
 .nav-cat{{font-size:.64rem;font-weight:800;letter-spacing:.8px;color:{D1_OR}!important;
@@ -419,8 +419,8 @@ def pdf_tableau(titre, sous_titre, df_tab, note=None):
     t.setStyle(TableStyle([
         ("BACKGROUND",(0,0),(-1,0),rouge),("TEXTCOLOR",(0,0),(-1,0),colors.white),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4ECEE")]),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#1E2535")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#2A3348")),
         ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
         ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
     ]))
@@ -458,7 +458,7 @@ def _pdf_stat_row(label, valeur, couleur_hex=None):
 def _pdf_barre(val, max_val, width_cm=14, height=10, couleur_hex=D1_ROUGE):
     w = width_cm*cm
     d = Drawing(w, height+2)
-    d.add(Rect(0,0,w,height,fillColor=colors.HexColor("#F0E8EA"),strokeColor=None))
+    d.add(Rect(0,0,w,height,fillColor=colors.HexColor("#1A2540"),strokeColor=None))
     if max_val>0:
         fw = val/max_val*w
         d.add(Rect(0,0,fw,height,fillColor=colors.HexColor(couleur_hex),strokeColor=None))
@@ -551,8 +551,8 @@ def pdf_scouting(eq):
         ("TEXTCOLOR",(0,0),(-1,0),colors.white),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
         ("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4ECEE")]),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#1E2535")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#2A3348")),
         ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
         ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
     ]))
@@ -611,8 +611,8 @@ def pdf_buteur(joueur_nom):
             ("TEXTCOLOR",(0,0),(-1,0),colors.white),
             ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
             ("FONTSIZE",(0,0),(-1,-1),8.5),
-            ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4ECEE")]),
-            ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+            ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#1E2535")]),
+            ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#2A3348")),
             ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
             ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
         ]))
@@ -676,8 +676,8 @@ def pdf_match(journee, dom, ext):
         ("TEXTCOLOR",(0,0),(-1,0),colors.white),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
         ("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4ECEE")]),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#D9C7CB")),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#1E2535")]),
+        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#2A3348")),
         ("ALIGN",(0,0),(1,-1),"CENTER"),("ALIGN",(4,0),(4,-1),"CENTER"),
         ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
         ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
@@ -697,10 +697,10 @@ def pdf_rapport_complet(eq):
     coul_hex = COULEUR_EQUIPE.get(eq, D1_ROUGE)
     COUL   = colors.HexColor(coul_hex)
     BLANC  = colors.white
-    GRIS   = colors.HexColor("#F7F4F5")
-    BORD   = colors.HexColor("#E0D8DA")
-    TEXTE  = colors.HexColor("#1A1A1E")
-    TEXTE_G= colors.HexColor("#6B6066")
+    GRIS   = colors.HexColor("#1E2535")
+    BORD   = colors.HexColor("#2A3348")
+    TEXTE  = colors.HexColor("#0F1117")
+    TEXTE_G= colors.HexColor("#8895A7")
     stl = getSampleStyleSheet()
     def ps(name, **kw): return ParagraphStyle(name, parent=stl["Normal"], **kw)
     titre_section = ps("ts", textColor=BLANC, fontSize=11, fontName="Helvetica-Bold",
@@ -720,7 +720,7 @@ def pdf_rapport_complet(eq):
     def mini_b(val, mx, w=5*cm, h=9, cf=None):
         cf2=colors.HexColor(cf) if cf else COUL
         d=Drawing(w,h+2)
-        d.add(Rect(0,0,w,h,fillColor=colors.HexColor("#F0EDED"),strokeColor=None))
+        d.add(Rect(0,0,w,h,fillColor=colors.HexColor("#1A2540"),strokeColor=None))
         if mx>0: d.add(Rect(0,0,val/mx*w,h,fillColor=cf2,strokeColor=None))
         return d
 
@@ -781,7 +781,7 @@ def pdf_rapport_complet(eq):
         is_dom=(m["dom"]==eq); adv=m["ext"] if is_dom else m["dom"]
         sc=f'{m["score_dom"]}–{m["score_ext"]}' if is_dom else f'{m["score_ext"]}–{m["score_dom"]}'
         r=m["res_dom"] if is_dom else m["res_ext"]; loc="Dom" if is_dom else "Ext"
-        rc="#27AE60" if r=="V" else("#C9A24B" if r=="N" else "#C00018")
+        rc="#27AE60" if r=="V" else("#C9A24B" if r=="N" else "#0096C7")
         fd.append([f'J{int(m["journee"])} ({loc})',nc(adv),sc,
                    Paragraph(f'<font color="{rc}"><b>{r}</b></font>',corps)])
     tf=Table(fd,colWidths=[2.5*cm,8.5*cm,2.5*cm,3*cm],repeatRows=1)
@@ -831,12 +831,12 @@ def pdf_rapport_complet(eq):
     tr_rows=[["Tranche","Marqués","","Encaissés",""]]
     for tr in tr_p.index:
         vp=int(tr_p[tr]); vc=int(tr_c[tr])
-        d_p=Drawing(6*cm,10); d_p.add(Rect(0,1,6*cm,8,fillColor=colors.HexColor("#F0E8EA"),strokeColor=None))
+        d_p=Drawing(6*cm,10); d_p.add(Rect(0,1,6*cm,8,fillColor=colors.HexColor("#1A2540"),strokeColor=None))
         if vp>0: d_p.add(Rect(0,1,vp/mx_tr*6*cm,8,fillColor=COUL,strokeColor=None))
-        d_c=Drawing(3.5*cm,10); d_c.add(Rect(0,1,3.5*cm,8,fillColor=colors.HexColor("#F0E8EA"),strokeColor=None))
+        d_c=Drawing(3.5*cm,10); d_c.add(Rect(0,1,3.5*cm,8,fillColor=colors.HexColor("#1A2540"),strokeColor=None))
         if vc>0: d_c.add(Rect(0,1,vc/mx_tr*3.5*cm,8,fillColor=colors.HexColor(D1_ROUGE),strokeColor=None))
         tr_rows.append([str(tr),Paragraph(f'<font color="{coul_hex}"><b>{vp}</b></font>',corps),d_p,
-                        Paragraph(f'<font color="#C00018"><b>{vc}</b></font>',corps),d_c])
+                        Paragraph(f'<font color="#0096C7"><b>{vc}</b></font>',corps),d_c])
     tt=Table(tr_rows,colWidths=[1.8*cm,1.2*cm,6*cm,1.2*cm,4.5*cm],repeatRows=1)
     tt.setStyle(TableStyle(tbl_base()+hdr_row()+zebra()))
     elems+=[tt,Spacer(1,6)]
@@ -878,7 +878,7 @@ def pdf_rapport_complet(eq):
 
 def bloc_export(pdf_buffer, nom_fichier, label="Exporter en PDF", csv_df=None, csv_nom=None):
     """Bloc d'export uniforme placé en bas de page."""
-    st.markdown("<hr style='border:none;border-top:1px solid #6C1420;margin:1.2rem 0 .6rem 0'>",
+    st.markdown("<hr style='border:none;border-top:1px solid #252A3A;margin:1.2rem 0 .6rem 0'>",
                 unsafe_allow_html=True)
     st.markdown("<div class='nav-cat' style='color:#9A8E91!important;margin-bottom:.3rem'>EXPORTER</div>",
                 unsafe_allow_html=True)
@@ -1869,13 +1869,16 @@ elif page == "Analyse avancée":
     fig_hm2=go.Figure(go.Heatmap(
         z=pivot_hm2.values,x=[f"{m}'" for m in range(1,41)],
         y=[nc(e) for e in pivot_hm2.index],
-        colorscale=[[0,"rgba(38,24,28,1)"],[0.4,"rgba(140,10,24,0.7)"],[1,D1_ROUGE]],
+        colorscale=[[0,"rgba(15,17,23,1)"],[0.4,"rgba(0,80,120,0.7)"],[1,D1_ROUGE]],
         text=[[str(int(v)) if v>0 else "" for v in row] for row in pivot_hm2.values],
         texttemplate="%{text}",textfont=dict(size=10,color="white"),
         hovertemplate="<b>%{y}</b> · %{x}<br>%{z} buts<extra></extra>",showscale=True,
         colorbar=dict(len=0.8,thickness=12,tickfont=dict(size=10))))
-    fig_hm2.add_vline(x="20'",line_dash="dot",line_color=D1_GRIS,line_width=1.5,
-        annotation_text="Mi-temps",annotation_font_color=D1_GRIS,annotation_position="top")
+    # Mi-temps : add_shape car axe catégoriel (add_vline ne marche pas)
+    fig_hm2.add_shape(type="line", x0=19.5, x1=19.5, y0=-0.5, y1=len(ordre_hm)-0.5,
+                      line=dict(color=D1_GRIS, width=1.5, dash="dot"))
+    fig_hm2.add_annotation(x=19.5, y=-0.8, text="Mi-temps", showarrow=False,
+                            font=dict(color=D1_GRIS, size=10), yanchor="top", xanchor="center")
     fig_hm2.update_xaxes(tickfont=dict(size=10),
         tickvals=[f"{m}'" for m in [1,5,10,15,20,25,30,35,40]])
     fig_hm2.update_yaxes(tickfont=dict(size=11))
