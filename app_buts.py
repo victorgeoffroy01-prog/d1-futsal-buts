@@ -43,6 +43,7 @@ D1_GRIS        = "#8895A7"
 D1_OR          = "#F4A261"
 D1_VERT        = "#2DC653"
 D1_BLEU        = "#0096C7"
+D1_DANGER      = "#E03045"   # rouge sémantique — défaites, danger, irrégularité
 
 # Couleurs issues des logos (extraites + ajustées pour lisibilité)
 COULEUR_EQUIPE = {
@@ -807,7 +808,7 @@ def pdf_rapport_complet(eq):
     elems.append(Paragraph("Retours au score",sous_titre))
     rs_rows=[["Scénario","Matchs"]]
     for lab,val,cf in [("Jamais mené",rs_d["jamais"],D1_VERT),("Est mené → Victoire",rs_d["mv"],coul_hex),
-                        ("Est mené → Nul",rs_d["mn"],D1_OR),("Est mené → Défaite",rs_d["md"],D1_ROUGE)]:
+                        ("Est mené → Nul",rs_d["mn"],D1_OR),("Est mené → Défaite",rs_d["md"],D1_DANGER)]:
         rs_rows.append([lab,Paragraph(f'<font color="{cf}"><b>{val}</b></font>',corps)])
     tr=Table(rs_rows,colWidths=[10*cm,6*cm])
     tr.setStyle(TableStyle(tbl_base()+hdr_row()+zebra()))
@@ -834,7 +835,7 @@ def pdf_rapport_complet(eq):
         d_p=Drawing(6*cm,10); d_p.add(Rect(0,1,6*cm,8,fillColor=colors.HexColor("#1A2540"),strokeColor=None))
         if vp>0: d_p.add(Rect(0,1,vp/mx_tr*6*cm,8,fillColor=COUL,strokeColor=None))
         d_c=Drawing(3.5*cm,10); d_c.add(Rect(0,1,3.5*cm,8,fillColor=colors.HexColor("#1A2540"),strokeColor=None))
-        if vc>0: d_c.add(Rect(0,1,vc/mx_tr*3.5*cm,8,fillColor=colors.HexColor(D1_ROUGE),strokeColor=None))
+        if vc>0: d_c.add(Rect(0,1,vc/mx_tr*3.5*cm,8,fillColor=colors.HexColor(D1_DANGER),strokeColor=None))
         tr_rows.append([str(tr),Paragraph(f'<font color="{coul_hex}"><b>{vp}</b></font>',corps),d_p,
                         Paragraph(f'<font color="#0096C7"><b>{vc}</b></font>',corps),d_c])
     tt=Table(tr_rows,colWidths=[1.8*cm,1.2*cm,6*cm,1.2*cm,4.5*cm],repeatRows=1)
@@ -1217,7 +1218,7 @@ elif page == "Classement":
         lg   = logo_b64(row["equipe"], 26)
         forme= forme_ronds(row["forme"])
         diff = row["Diff"]
-        diff_color = D1_VERT if diff>0 else(D1_ROUGE if diff<0 else D1_GRIS)
+        diff_color = D1_VERT if diff>0 else(D1_DANGER if diff<0 else D1_GRIS)
         diff_txt = f"+{diff}" if diff>0 else str(diff)
         bg = hex_to_rgba(coul, 0.08) if is_top3 else "transparent"
         border_left = f"border-left:3px solid {coul}" if is_top3 else "border-left:3px solid transparent"
@@ -1645,7 +1646,7 @@ elif page == "Buteurs":
                 f'</div>'
                 f'<div style="margin-bottom:.6rem">'
                 f'<span style="color:{D1_GRIS};font-size:.8rem">Buts clutch (36\'-40\')</span><br>'
-                f'<b style="color:{D1_ROUGE if clutch_j==0 else D1_VERT};font-size:1rem">{clutch_j} buts</b>'
+                f'<b style="color:{D1_DANGER if clutch_j==0 else D1_VERT};font-size:1rem">{clutch_j} buts</b>'
                 f'</div>'
                 f'<div>'
                 f'<span style="color:{D1_GRIS};font-size:.8rem">Minute fétiche</span><br>'
@@ -1796,7 +1797,7 @@ elif page == "Analyse avancée":
         fig_std=go.Figure()
         for _,r in reg_s.iterrows():
             ratio=(r["std"]-reg_s["std"].min())/((reg_s["std"].max()-reg_s["std"].min()) or 1)
-            c_eq=D1_VERT if ratio<0.4 else(D1_OR if ratio<0.7 else D1_ROUGE)
+            c_eq=D1_VERT if ratio<0.4 else(D1_OR if ratio<0.7 else D1_DANGER)
             fig_std.add_trace(go.Bar(x=[round(r["std"],1)],y=[nc(r["equipe"])],
                 orientation="h",marker_color=c_eq,text=[f'± {r["std"]:.1f}'],
                 textposition="outside",textangle=0,showlegend=False,
@@ -1932,8 +1933,8 @@ elif page == "Confrontations":
     if len(mh2h):
         st.markdown("### Résultats")
         for _,m in mh2h.sort_values("journee").iterrows():
-            bc_dom=D1_VERT if m["res_dom"]=="V" else(D1_OR if m["res_dom"]=="N" else D1_ROUGE)
-            bc_ext=D1_VERT if m["res_dom"]=="D" else(D1_OR if m["res_dom"]=="N" else D1_ROUGE)
+            bc_dom=D1_VERT if m["res_dom"]=="V" else(D1_OR if m["res_dom"]=="N" else D1_DANGER)
+            bc_ext=D1_VERT if m["res_dom"]=="D" else(D1_OR if m["res_dom"]=="N" else D1_DANGER)
             st.markdown(
                 f'<div style="display:flex;align-items:center;gap:1rem;padding:.28rem .6rem;'
                 f'background:{D1_CARTE};border-radius:7px;margin:.15rem 0;font-size:.86rem">'
@@ -2153,7 +2154,7 @@ if page == "Fiche équipe":
             txt_ret = (f'N\'a jamais été menée sur les {tot_m} matchs.' if rs["mv"]+rs["mn"]+rs["md"]==0
                        else f'Sur {rs["mv"]+rs["mn"]+rs["md"]} matchs où l\'équipe a été menée, elle a réussi à revenir {rs["mv"]+rs["mn"]} fois.')
             st.markdown(f'<p style="color:{D1_GRIS};font-size:.82rem">{txt_ret}</p>', unsafe_allow_html=True)
-            for label, val, c_ in [("Jamais menée",rs["jamais"],D1_VERT),("Menée → Victoire",rs["mv"],coul),("Menée → Nul",rs["mn"],D1_OR),("Menée → Défaite",rs["md"],D1_ROUGE)]:
+            for label, val, c_ in [("Jamais menée",rs["jamais"],D1_VERT),("Menée → Victoire",rs["mv"],coul),("Menée → Nul",rs["mn"],D1_OR),("Menée → Défaite",rs["md"],D1_DANGER)]:
                 pct = val/tot_m*100 if tot_m else 0
                 st.markdown(
                     f'<div style="margin:.35rem 0">'
@@ -2285,7 +2286,7 @@ if page == "Fiche équipe":
             mins_c = dcontre["minute"].dropna().astype(int)
             tr_c = pd.cut(mins_c, bins=range(0,41,5), labels=[f"{i+1}-{i+5}'" for i in range(0,40,5)]).value_counts().sort_index()
             max_tc = tr_c.max(); best_tr = tr_c.idxmax()
-            coul_tc = [D1_ROUGE if t==best_tr else D1_BORDEAUX_2 for t in tr_c.index]
+            coul_tc = [D1_DANGER if t==best_tr else D1_BORDEAUX_2 for t in tr_c.index]
             fig_tc = go.Figure(go.Bar(x=tr_c.index.astype(str), y=tr_c.values, marker_color=coul_tc,
                 text=tr_c.values, textposition="outside", textangle=0, textfont=dict(size=13,color=D1_BLANC)))
             fig_tc.update_yaxes(showticklabels=False)
@@ -2345,7 +2346,7 @@ if page == "Fiche équipe":
                 with cg_enc:
                     fig_enc = go.Figure(go.Bar(
                         x=oo_enc.values, y=oo_enc.index, orientation="h",
-                        marker_color=D1_ROUGE,
+                        marker_color=D1_DANGER,
                         text=[f"{v} ({v/n_enc_orig*100:.0f}%)" for v in oo_enc.values],
                         textposition="outside", textangle=0,
                         textfont=dict(size=13, color=D1_BLANC), cliponaxis=False
@@ -2359,7 +2360,7 @@ if page == "Fiche équipe":
                     pct_faible = oo_enc.iloc[0]/n_enc_orig*100
                     st.markdown(
                         f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
-                        f'border-left:4px solid {D1_ROUGE};border-radius:12px;padding:1rem 1.2rem">'
+                        f'border-left:4px solid {D1_DANGER};border-radius:12px;padding:1rem 1.2rem">'
                         f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
                         f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.8rem">Point faible principal</div>'
                         f'<div style="color:{D1_ROUGE};font-size:1.2rem;font-weight:800">{orig_faible}</div>'
