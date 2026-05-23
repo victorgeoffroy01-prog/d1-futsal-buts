@@ -29,6 +29,8 @@ from reportlab.graphics import renderPDF
 # CONFIG & CHARTE
 # ============================================================================
 DB_PATH   = "futsal_d1.db"
+XLSX_PATH    = "But_D1.xlsx"      # source de vérité : la base est reconstruite à partir de ce fichier
+SCHEMA_PATH  = "schema_buts.sql"  # schéma SQL utilisé pour (re)construire la base
 LOGO_D1   = Path("D1_Futsal_logo.png")
 LOGOS_DIR = Path("logos")
 
@@ -248,13 +250,35 @@ def dl_csv(df, label, nom):
 # ============================================================================
 @st.cache_data
 def charger():
+    # La base SQLite est reconstruite automatiquement à partir de But_D1.xlsx
+    # au démarrage (source de vérité unique). Plus besoin de pousser le .db :
+    # il suffit de mettre à jour But_D1.xlsx dans le dépôt et de redéployer.
+    if Path(XLSX_PATH).exists() and Path(SCHEMA_PATH).exists():
+        try:
+            import openpyxl
+            import migration_buts as mig
+            wb = openpyxl.load_workbook(XLSX_PATH, data_only=True)
+            buts = mig.lire_buts_principale(wb)
+            origines = mig.lire_origines(wb)
+            for b in buts:
+                cle = mig.cle_rattachement(
+                    b["journee"], b["minute"], b["periode"], b["joueur"]
+                )
+                if cle in origines:
+                    b["origine"] = origines[cle]
+            mig.construire_base(buts).close()      # (ré)écrit futsal_d1.db
+        except Exception as e:
+            # Reconstruction impossible : on se rabat sur une base déjà présente.
+            if not Path(DB_PATH).exists():
+                st.error(f"Reconstruction de la base impossible : {e}")
+                return None
     if not Path(DB_PATH).exists():
         return None
     return pd.read_sql_query("SELECT * FROM but", sqlite3.connect(DB_PATH))
 
 df = charger()
 if df is None:
-    st.error("Base `futsal_d1.db` introuvable. Lance d'abord : python migration_buts.py")
+    st.error("Données introuvables : `But_D1.xlsx` (+ `schema_buts.sql`) ou `futsal_d1.db` doit être présent dans le dépôt.")
     st.stop()
 
 EQUIPES   = sorted(df["equipe_marque"].dropna().unique().tolist())
