@@ -1763,6 +1763,101 @@ if page == "Rapport équipe":
                 f"Générer le rapport — {eq}")
 
 # ============================================================================
+# FONCTIONS D'ANALYSE TACTIQUE
+# ============================================================================
+
+def _get_matchs():
+    return construire_matchs()
+
+def analyser_premier_but(eq):
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    res = {"marque":{"V":0,"N":0,"D":0,"total":0},
+           "encaisse":{"V":0,"N":0,"D":0,"total":0}}
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
+                (df["equipe_exterieure"]==m["ext"])]
+        if len(dm)==0: continue
+        first = dm.sort_values(["periode","minute"]).iloc[0]
+        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
+        cle = "marque" if first["equipe_marque"]==eq else "encaisse"
+        res[cle][r]+=1; res[cle]["total"]+=1
+    return res
+
+def analyser_dom_ext(eq):
+    matchs = _get_matchs()
+    dom_m = matchs[matchs["dom"]==eq]; ext_m = matchs[matchs["ext"]==eq]
+    vd=int((dom_m["res_dom"]=="V").sum()); nd=int((dom_m["res_dom"]=="N").sum()); dd=int((dom_m["res_dom"]=="D").sum())
+    ve=int((ext_m["res_ext"]=="V").sum()); ne=int((ext_m["res_ext"]=="N").sum()); de=int((ext_m["res_ext"]=="D").sum())
+    return {"dom":(vd,nd,dd),"ext":(ve,ne,de)}
+
+def analyser_retours_score(eq):
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    jamais=0; mv=0; mn=0; md=0
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
+                (df["equipe_exterieure"]==m["ext"])]
+        goals = dm.sort_values(["periode","minute"]); is_dom=(m["dom"]==eq)
+        was_trailing=False; sd=0; se=0
+        for _,b in goals.iterrows():
+            if b["equipe_marque"]==m["dom"]: sd+=1
+            else: se+=1
+            if (sd if is_dom else se)<(se if is_dom else sd): was_trailing=True; break
+        r = m["res_dom"] if is_dom else m["res_ext"]
+        if not was_trailing: jamais+=1
+        elif r=="V": mv+=1
+        elif r=="N": mn+=1
+        else: md+=1
+    return {"jamais":jamais,"mv":mv,"mn":mn,"md":md}
+
+def analyser_momentum(eq):
+    matchs = _get_matchs()
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    trans = {"MM":[],"ME":[],"EM":[],"EE":[]}
+    for _,m in meq.iterrows():
+        dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
+                (df["equipe_exterieure"]==m["ext"])]
+        if len(dm)<2: continue
+        goals = dm.sort_values(["periode","minute"])
+        mins = goals["minute"].values; teams = goals["equipe_marque"].values
+        for i in range(len(goals)-1):
+            delta = max(1,int(mins[i+1])-int(mins[i]))
+            t1="M" if teams[i]==eq else "E"; t2="M" if teams[i+1]==eq else "E"
+            trans[t1+t2].append(delta)
+    labels={"MM":"Marque → Marque","ME":"Marque → Encaisse",
+            "EM":"Encaisse → Marque","EE":"Encaisse → Encaisse"}
+    return {labels[k]:(round(sum(v)/len(v)) if v else None) for k,v in trans.items()}
+
+def analyser_bilan_top6(eq):
+    matchs = _get_matchs()
+    clt = construire_classement()
+    top6 = [e for e in clt.head(6)["equipe"].tolist() if e!=eq]
+    meq = matchs[(matchs["dom"]==eq)|(matchs["ext"]==eq)]
+    bvt = meq[(meq["dom"].isin(top6))|(meq["ext"].isin(top6))]
+    v=0; n=0; d=0
+    for _,m in bvt.iterrows():
+        r = m["res_dom"] if m["dom"]==eq else m["res_ext"]
+        if r=="V": v+=1
+        elif r=="N": n+=1
+        else: d+=1
+    return v,n,d
+
+def _carte_stat(titre, valeur_principale, sous_texte=None, couleur=None):
+    c = couleur or D1_ROUGE
+    html = (
+        f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+        f'border-top:4px solid {c};border-radius:12px;padding:1.2rem 1.3rem;height:100%;min-height:110px">'
+        f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.5rem">{titre}</div>'
+        f'<div style="font-size:2.4rem;font-weight:900;color:{c};line-height:1.1">{valeur_principale}</div>'
+    )
+    if sous_texte:
+        html += f'<div style="font-size:.85rem;color:{D1_GRIS};margin-top:.4rem;font-weight:500">{sous_texte}</div>'
+    html += '</div>'
+    return html
+
+# ============================================================================
 # FONCTIONS NOUVELLES STATS
 # ============================================================================
 
