@@ -445,7 +445,7 @@ def pdf_tableau(titre, sous_titre, df_tab, note=None):
     t.setStyle(TableStyle([
         ("BACKGROUND",(0,0),(-1,0),rouge),("TEXTCOLOR",(0,0),(-1,0),colors.white),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#1E2535")]),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#ECEFF4")]),
         ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#2A3348")),
         ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
         ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
@@ -528,7 +528,7 @@ def pdf_scouting(eq):
     elems.append(Spacer(1,8))
 
     # Top buteurs
-    elems.append(_pdf_section("⚽ Buteurs dangereux", stl))
+    elems.append(_pdf_section("⚽ Principaux buteurs", stl))
     bb = dpour["joueur"].value_counts().head(8)
     max_b = bb.max() if len(bb) else 1
     np_stl = ParagraphStyle("np",parent=stl["Normal"],fontSize=8.5,spaceBefore=1,spaceAfter=1)
@@ -556,7 +556,7 @@ def pdf_scouting(eq):
     max_tc = tr_c.max() if tr_c.max()>0 else 1
     best_tr = tr_c.idxmax()
     for tr, v in tr_c.items():
-        rouge_flag = " ← TRANCHE VULNÉRABLE" if tr==best_tr else ""
+        rouge_flag = " ← PLUS ENCAISSÉ" if tr==best_tr else ""
         elems.append(Paragraph(f"{tr}  ({int(v)} buts encaissés){rouge_flag}", np_stl))
         c_bar = D1_ROUGE if tr==best_tr else "#9A8E91"
         elems.append(_pdf_barre(int(v), int(max_tc), couleur_hex=c_bar))
@@ -577,7 +577,7 @@ def pdf_scouting(eq):
         ("TEXTCOLOR",(0,0),(-1,0),colors.white),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
         ("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#1E2535")]),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#ECEFF4")]),
         ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#2A3348")),
         ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
         ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
@@ -637,7 +637,7 @@ def pdf_buteur(joueur_nom):
             ("TEXTCOLOR",(0,0),(-1,0),colors.white),
             ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
             ("FONTSIZE",(0,0),(-1,-1),8.5),
-            ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#1E2535")]),
+            ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#ECEFF4")]),
             ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#2A3348")),
             ("ALIGN",(1,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
             ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
@@ -646,7 +646,7 @@ def pdf_buteur(joueur_nom):
     elems.append(Spacer(1,8))
 
     # Adversaires favoris
-    elems.append(_pdf_section("🎯 Adversaires favoris", stl))
+    elems.append(_pdf_section("🎯 Buts par adversaire", stl))
     adv = dj["equipe_encaisse"].value_counts().head(6)
     for eq_, n_ in adv.items():
         elems.append(Paragraph(f"{eq_}  ({int(n_)} buts)", np_stl))
@@ -702,7 +702,7 @@ def pdf_match(journee, dom, ext):
         ("TEXTCOLOR",(0,0),(-1,0),colors.white),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
         ("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#1E2535")]),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#ECEFF4")]),
         ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#2A3348")),
         ("ALIGN",(0,0),(1,-1),"CENTER"),("ALIGN",(4,0),(4,-1),"CENTER"),
         ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
@@ -723,7 +723,7 @@ def pdf_rapport_complet(eq):
     coul_hex = COULEUR_EQUIPE.get(eq, D1_ROUGE)
     COUL   = colors.HexColor(coul_hex)
     BLANC  = colors.white
-    GRIS   = colors.HexColor("#1E2535")
+    GRIS   = colors.HexColor("#ECEFF4")
     BORD   = colors.HexColor("#2A3348")
     TEXTE  = colors.HexColor("#0F1117")
     TEXTE_G= colors.HexColor("#8895A7")
@@ -1117,7 +1117,7 @@ if page == "Accueil":
                                      h=max(300,30*len(vals))), use_container_width=True)
     with cd:
         st.markdown("### Buts encaissés par équipe")
-        vals2 = df["equipe_encaisse"].value_counts()
+        vals2 = df["equipe_encaisse"].value_counts().sort_values()  # moins encaissé en haut
         # même couleur d'équipe (pas de transparence différente)
         st.plotly_chart(barh_equipes(vals2.index.tolist(), vals2.values,
                                      h=max(300,30*len(vals2))), use_container_width=True)
@@ -1544,7 +1544,7 @@ elif page == "Buteurs":
         fig_prog.update_yaxes(dtick=5)
         st.plotly_chart(style_fig(fig_prog, 250), use_container_width=True)
     with cd:
-        st.markdown("### Adversaires favoris")
+        st.markdown("### Buts par adversaire")
         adv = dj["equipe_encaisse"].value_counts().head(6)
         fig_adv = go.Figure()
         for eq_, n_ in adv.items():
@@ -1677,7 +1677,7 @@ elif page == "Buteurs":
                 f'<span style="color:{D1_GRIS};font-size:.8rem"> ({oo_j.iloc[0]} buts, {oo_j.iloc[0]/n_orig_j*100:.0f}%)</span>'
                 f'</div>'
                 f'<div style="margin-bottom:.6rem">'
-                f'<span style="color:{D1_GRIS};font-size:.8rem">Situation favorite</span><br>'
+                f'<span style="color:{D1_GRIS};font-size:.8rem">Situation la plus fréquente</span><br>'
                 f'<b style="color:{D1_BLANC};font-size:1rem">{sit_principale}</b>'
                 f'</div>'
                 f'<div style="margin-bottom:.6rem">'
@@ -1685,7 +1685,7 @@ elif page == "Buteurs":
                 f'<b style="color:{D1_DANGER if clutch_j==0 else D1_VERT};font-size:1rem">{clutch_j} buts</b>'
                 f'</div>'
                 f'<div>'
-                f'<span style="color:{D1_GRIS};font-size:.8rem">Minute fétiche</span><br>'
+                f'<span style="color:{D1_GRIS};font-size:.8rem">Minute la plus fréquente</span><br>'
                 f'<b style="color:{D1_BLANC};font-size:1rem">{minute_fetiche}\'</b>'
                 f'</div>'
                 f'</div>',
@@ -2427,7 +2427,7 @@ if page == "Fiche équipe":
                 text=tr_c.values, textposition="outside", textangle=0, textfont=dict(size=13,color=D1_BLANC)))
             fig_tc.update_yaxes(showticklabels=False)
             st.plotly_chart(style_fig(fig_tc, 260), use_container_width=True)
-            st.markdown(f"<p class='note'>⚠ Tranche la plus vulnérable : <b>{best_tr}</b> ({int(tr_c.max())} buts encaissés)</p>",
+            st.markdown(f"<p class='note'>Tranche la plus encaissée : <b>{best_tr}</b> ({int(tr_c.max())} buts encaissés)</p>",
                         unsafe_allow_html=True)
 
             c_def1, c_def2 = st.columns(2)
@@ -2441,7 +2441,7 @@ if page == "Fiche équipe":
                 fig_sc2.update_yaxes(showticklabels=False)
                 st.plotly_chart(style_fig(fig_sc2, 260), use_container_width=True)
             with c_def2:
-                st.markdown("### Scoreurs adverses les plus prolifiques")
+                st.markdown("### Principaux buteurs adverses")
                 sc_adv = dcontre["joueur"].value_counts().head(8)
                 fig_sa = go.Figure(go.Bar(x=sc_adv.values, y=[nj(j) for j in sc_adv.index], orientation="h",
                     marker_color=D1_ROUGE, text=sc_adv.values, textposition="outside", textangle=0,
@@ -2454,7 +2454,7 @@ if page == "Fiche équipe":
             cd1,cd2,cd3=st.columns(3)
             cd1.metric("Encaissés P1",vul_p1,f"{vul_p1/tot_enc*100:.0f}%")
             cd2.metric("Encaissés P2",vul_p2,f"{vul_p2/tot_enc*100:.0f}%")
-            cd3.metric("Plus vulnérable","1re période" if vul_p1>vul_p2 else "2e période")
+            cd3.metric("Encaisse le plus","1re période" if vul_p1>vul_p2 else "2e période")
 
             # ---- ORIGINES DES BUTS ENCAISSÉS ----
             st.markdown("### Par quel type d'action encaissent-ils ?")
@@ -2498,7 +2498,7 @@ if page == "Fiche équipe":
                         f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
                         f'border-left:4px solid {D1_DANGER};border-radius:12px;padding:1rem 1.2rem">'
                         f'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;'
-                        f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.8rem">Point faible principal</div>'
+                        f'letter-spacing:.5px;color:{D1_GRIS};margin-bottom:.8rem">Origine la plus encaissée</div>'
                         f'<div style="color:{D1_ROUGE};font-size:1.2rem;font-weight:800">{orig_faible}</div>'
                         f'<div style="color:{D1_GRIS};font-size:.85rem;margin-top:.3rem">'
                         f'{oo_enc.iloc[0]} buts encaissés sur ce type ({pct_faible:.0f}%)</div>'
