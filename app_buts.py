@@ -317,6 +317,13 @@ def nj(nom, court=False):
 def njs(liste):
     return [nj(n) for n in liste]
 
+# Buts contre son camp : crédités à l'équipe (score, buts pour) mais non
+# attribuables à un buteur -> exclus de tous les classements/fiches de buteurs.
+CSC = "CSC"
+def sans_csc(d):
+    """Retire les buts contre son camp (non rattachables à un buteur)."""
+    return d[d["joueur"].astype(str).str.upper() != CSC]
+
 # ============================================================================
 # FONCTIONS MÉTIER
 # ============================================================================
@@ -529,7 +536,7 @@ def pdf_scouting(eq):
 
     # Top buteurs
     elems.append(_pdf_section("⚽ Principaux buteurs", stl))
-    bb = dpour["joueur"].value_counts().head(8)
+    bb = sans_csc(dpour)["joueur"].value_counts().head(8)
     max_b = bb.max() if len(bb) else 1
     np_stl = ParagraphStyle("np",parent=stl["Normal"],fontSize=8.5,spaceBefore=1,spaceAfter=1)
     for joueur, nb in bb.items():
@@ -679,8 +686,8 @@ def pdf_match(journee, dom, ext):
     elems.append(_pdf_stat_row("Buts 2e période", int((df_m["periode"]==2).sum())))
     buts_dom_df = df_m[df_m["equipe_marque"]==dom]
     buts_ext_df = df_m[df_m["equipe_marque"]==ext]
-    elems.append(_pdf_stat_row(f"Buteurs {dom.split()[0]}", buts_dom_df["joueur"].nunique()))
-    elems.append(_pdf_stat_row(f"Buteurs {ext.split()[0]}", buts_ext_df["joueur"].nunique()))
+    elems.append(_pdf_stat_row(f"Buteurs {dom.split()[0]}", sans_csc(buts_dom_df)["joueur"].nunique()))
+    elems.append(_pdf_stat_row(f"Buteurs {ext.split()[0]}", sans_csc(buts_ext_df)["joueur"].nunique()))
     elems.append(Spacer(1,8))
 
     # Chronologie
@@ -869,7 +876,7 @@ def pdf_rapport_complet(eq):
 
     # Section 04
     elems.append(Paragraph("SECTION 04 — Analyse des Buteurs",titre_section))
-    bb=dpour["joueur"].value_counts(); tot_b=len(dpour) or 1
+    bb=sans_csc(dpour)["joueur"].value_counts(); tot_b=len(dpour) or 1
     elems.append(Paragraph(f'Top 3 : {bb.head(3).sum()} buts ({bb.head(3).sum()/tot_b*100:.0f}%)',gris_stl))
     elems.append(Spacer(1,4))
     for joueur,nb in bb.head(10).items():
@@ -1069,7 +1076,7 @@ def retournements_eq(eq):
 
 def buteurs_clutch_eq(eq):
     """Buteurs avec le plus de buts entre 36' et 40'."""
-    return df[(df["equipe_marque"]==eq)&(df["minute"]>=36)]["joueur"].value_counts()
+    return sans_csc(df[(df["equipe_marque"]==eq)&(df["minute"]>=36)])["joueur"].value_counts()
 
 # ============================================================================
 # FONCTION — POWER PLAY (gardien volant)
@@ -1092,7 +1099,7 @@ if page == "Accueil":
     matchs = construire_matchs()
     nb_matchs = len(matchs)
     moy = len(df)/nb_matchs if nb_matchs else 0
-    top_but = df["joueur"].value_counts()
+    top_but = sans_csc(df)["joueur"].value_counts()
     top_att = df["equipe_marque"].value_counts()
 
     c1,c2,c3,c4,c5 = st.columns(5)
@@ -1460,14 +1467,14 @@ elif page == "Fiche match":
     c1,c2,c3,c4,c5,c6 = st.columns(6)
     c1.metric("Buts dom.",len(buts_dom)); c2.metric("Buts ext.",len(buts_ext))
     c3.metric("Buts P1",int((df_match["periode"]==1).sum())); c4.metric("Buts P2",int((df_match["periode"]==2).sum()))
-    c5.metric("Buteurs dom.",buts_dom["joueur"].nunique()); c6.metric("Buteurs ext.",buts_ext["joueur"].nunique())
+    c5.metric("Buteurs dom.",sans_csc(buts_dom)["joueur"].nunique()); c6.metric("Buteurs ext.",sans_csc(buts_ext)["joueur"].nunique())
     cg,cd = st.columns(2)
     with cg:
         st.markdown(f"**{dom.split()[0]}**")
-        for j,n in buts_dom["joueur"].value_counts().items(): st.markdown(f'{"⚽"*n} **{j}** ({n})')
+        for j,n in sans_csc(buts_dom)["joueur"].value_counts().items(): st.markdown(f'{"⚽"*n} **{j}** ({n})')
     with cd:
         st.markdown(f"**{ext.split()[0]}**")
-        for j,n in buts_ext["joueur"].value_counts().items(): st.markdown(f'{"⚽"*n} **{j}** ({n})')
+        for j,n in sans_csc(buts_ext)["joueur"].value_counts().items(): st.markdown(f'{"⚽"*n} **{j}** ({n})')
 
     bloc_export(pdf_match(j_sel, dom, ext),
                 f"match_J{j_sel}_{dom[:8].replace(' ','_')}_{ext[:8].replace(' ','_')}.pdf",
@@ -1480,6 +1487,7 @@ elif page == "Buteurs":
     st.title("Classement des buteurs")
     eq = st.selectbox("Filtrer par équipe", ["Toutes"]+EQUIPES)
     d  = df if eq=="Toutes" else df[df["equipe_marque"]==eq]
+    d  = sans_csc(d)
     clt = (d.groupby("joueur")
              .agg(buts=("but_id","count"), equipe=("equipe_marque",lambda s:s.mode().iloc[0]))
              .reset_index().sort_values("buts",ascending=False).reset_index(drop=True))
@@ -1704,7 +1712,7 @@ elif page == "Buteurs":
 elif page == "Comparateur":
     st.title("Comparateur de buteurs")
 
-    ordre_buteurs = df["joueur"].value_counts().index.tolist()
+    ordre_buteurs = sans_csc(df)["joueur"].value_counts().index.tolist()
     c_sel1, c_sel2 = st.columns(2)
     jA = c_sel1.selectbox("Joueur A", ordre_buteurs, index=0, key="cmp_a")
     jB = c_sel2.selectbox("Joueur B", ordre_buteurs,
@@ -1956,7 +1964,7 @@ elif page == "Analyse avancée":
                 dm2=df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&(df["equipe_exterieure"]==m["ext"])]
                 bpm_l.append(int((dm2["equipe_marque"]==eq).sum()))
             std=pd.Series(bpm_l).std(ddof=0) if len(bpm_l)>1 else 0
-            collectif=float(dp["joueur"].nunique())
+            collectif=float(sans_csc(dp)["joueur"].nunique())
             return [vol_off,enc_pm,resistance,std,collectif]
         all_vals={eq:radar_vals(eq) for eq in eq_radar}
         all_matrix=pd.DataFrame(all_vals,index=indicateurs)
@@ -2040,7 +2048,7 @@ elif page == "Power play":
                     f"sur {len(df)} buts au total"), unsafe_allow_html=True)
         c2.markdown(_carte_stat("Équipes", pp["equipe_marque"].nunique(),
                     "ont marqué en power play", D1_ROUGE), unsafe_allow_html=True)
-        c3.markdown(_carte_stat("Buteurs", pp["joueur"].nunique(),
+        c3.markdown(_carte_stat("Buteurs", sans_csc(pp)["joueur"].nunique(),
                     "différents", D1_VERT), unsafe_allow_html=True)
         c4.markdown(_carte_stat("Minute moyenne",
                     f"{mins.mean():.0f}'" if len(mins) else "—",
@@ -2098,7 +2106,7 @@ elif page == "Power play":
 
         # --- Buteurs ---
         st.markdown("### Buteurs en power play")
-        bz = pp["joueur"].value_counts().head(10)
+        bz = sans_csc(pp)["joueur"].value_counts().head(10)
         if len(bz):
             noms = [nj(n) for n in bz.index][::-1]
             vals = bz.values.tolist()[::-1]
@@ -2298,7 +2306,7 @@ if page == "Fiche équipe":
     # ---- TAB 1 : VUE GÉNÉRALE ----
     with tab1:
         c1,c2,c3,c4 = st.columns(4)
-        c1.metric("Buteurs utilisés", dpour["joueur"].nunique())
+        c1.metric("Buteurs utilisés", sans_csc(dpour)["joueur"].nunique())
         c2.metric("Buts P1", int((dpour["periode"]==1).sum()))
         c3.metric("Buts P2", int((dpour["periode"]==2).sum()))
         clutch_n, total_dp = buts_clutch_eq(eq)
@@ -2308,7 +2316,7 @@ if page == "Fiche équipe":
         cg, cd = st.columns(2)
         with cg:
             st.markdown("### Top buteurs")
-            bb = dpour["joueur"].value_counts()
+            bb = sans_csc(dpour)["joueur"].value_counts()
             fig = go.Figure(go.Bar(x=bb.values, y=[nj(j) for j in bb.index], orientation="h",
                                    marker_color=coul, text=bb.values, textposition="outside",
                                    textangle=0, textfont=dict(size=14,color=D1_BLANC),
@@ -2477,7 +2485,7 @@ if page == "Fiche équipe":
         ong1, ong2 = st.tabs(["⚔ Profil offensif","🛡 Profil défensif"])
         with ong1:
             st.markdown("### Top buteurs")
-            bb_sc = dpour["joueur"].value_counts().head(10)
+            bb_sc = sans_csc(dpour)["joueur"].value_counts().head(10)
             total_sc = len(dpour) or 1
             fig_off = go.Figure()
             for j, n in bb_sc.items():
@@ -2540,7 +2548,7 @@ if page == "Fiche équipe":
                 st.plotly_chart(style_fig(fig_sc2, 260), use_container_width=True)
             with c_def2:
                 st.markdown("### Principaux buteurs adverses")
-                sc_adv = dcontre["joueur"].value_counts().head(8)
+                sc_adv = sans_csc(dcontre)["joueur"].value_counts().head(8)
                 fig_sa = go.Figure(go.Bar(x=sc_adv.values, y=[nj(j) for j in sc_adv.index], orientation="h",
                     marker_color=D1_ROUGE, text=sc_adv.values, textposition="outside", textangle=0,
                     textfont=dict(size=13,color=D1_BLANC), cliponaxis=False))
@@ -2640,7 +2648,7 @@ if page == "Fiche équipe":
                         unsafe_allow_html=True)
             og_sel = st.selectbox("Type d'action", oo_t4.index.tolist(), key="conc_orig_fiche")
             sous_og = dpour[dpour["origine"] == og_sel]
-            bb_og = sous_og["joueur"].value_counts().head(10)
+            bb_og = sans_csc(sous_og)["joueur"].value_counts().head(10)
             if len(bb_og):
                 noms_og = [nj(n) for n in bb_og.index][::-1]
                 vals_og = bb_og.values.tolist()[::-1]
