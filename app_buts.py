@@ -383,7 +383,8 @@ def reconstruire_score(df_match, dom, ext):
 NAV = {
     "CHAMPIONNAT": [("🏠", "Accueil"), ("🏆", "Classement"),
                     ("⚽", "Fiche match"), ("⏱", "Profil temporel"),
-                    ("📊", "Dynamique de score"), ("📈", "Analyse avancée")],
+                    ("📊", "Dynamique de score"), ("📈", "Analyse avancée"),
+                    ("🧤", "Power play")],
     "ÉQUIPES":     [("🛡", "Fiche équipe"), ("⚔", "Confrontations"),
                     ("📋", "Rapport équipe")],
     "JOUEURS":     [("👟", "Buteurs")],
@@ -1069,6 +1070,23 @@ def retournements_eq(eq):
 def buteurs_clutch_eq(eq):
     """Buteurs avec le plus de buts entre 36' et 40'."""
     return df[(df["equipe_marque"]==eq)&(df["minute"]>=36)]["joueur"].value_counts()
+
+# ============================================================================
+# FONCTION — POWER PLAY (gardien volant)
+# ============================================================================
+@st.cache_data
+def analyser_power_play():
+    """Sépare les buts d'origine 'Power play' selon le contexte de l'équipe qui marque :
+       - offensif : l'équipe pousse avec le gardien volant (situation Mené / Égalité)
+       - but vide : l'équipe menait et a marqué dans le but laissé vide par
+                    l'adversaire lui-même en power play (situation Menant)
+    """
+    pp = df[df["origine"] == "Power play"].copy()
+    if not pp.empty:
+        pp["ecart_avant"] = pp["score_marque_avant"] - pp["score_encaisse_avant"]
+    offensif = pp[pp["situation"].isin(["Mené", "Égalité"])].copy()
+    but_vide = pp[pp["situation"] == "Menant"].copy()
+    return pp, offensif, but_vide
 
 # ============================================================================
 # PAGE — FICHE ÉQUIPE (fusion Vue équipe + Analyse Tactique + Scouting + Origines)
@@ -1908,6 +1926,111 @@ elif page == "Analyse avancée":
         tickvals=[f"{m}'" for m in [1,5,10,15,20,25,30,35,40]])
     fig_hm2.update_yaxes(tickfont=dict(size=11))
     st.plotly_chart(style_fig(fig_hm2,max(300,38*len(ordre_hm))),use_container_width=True)
+
+
+elif page == "Power play":
+    st.title("Power play")
+    st.markdown(
+        "<p class='note'>Le power play (gardien volant) remplace le gardien par un joueur "
+        "de champ pour jouer en supériorité numérique. Arme de fin de match, surtout quand "
+        "l'équipe est menée. Analyse limitée aux équipes ayant saisi l'origine de leurs buts.</p>",
+        unsafe_allow_html=True,
+    )
+
+    pp, offensif, but_vide = analyser_power_play()
+
+    if pp.empty:
+        st.info("Aucun but power play enregistré pour l'instant.")
+    else:
+        mins_off = offensif["minute"].dropna().astype(int)
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.markdown(_carte_stat("Buts power play", len(pp),
+                    f"{offensif['equipe_marque'].nunique()} équipes concernées"),
+                    unsafe_allow_html=True)
+        c2.markdown(_carte_stat("Offensifs", len(offensif),
+                    "équipe menée ou à égalité", D1_ROUGE), unsafe_allow_html=True)
+        c3.markdown(_carte_stat("Dans le but vide", len(but_vide),
+                    "contre un PP adverse", D1_OR), unsafe_allow_html=True)
+        c4.markdown(_carte_stat("Minute moyenne",
+                    f"{mins_off.mean():.0f}'" if len(mins_off) else "—",
+                    "des power play offensifs", D1_VERT), unsafe_allow_html=True)
+
+        # --- Qui l'utilise ---
+        st.markdown("### Qui utilise le power play ?")
+        st.markdown("<p class='note'>Buts en power play offensif (équipe menée ou à égalité), par équipe.</p>",
+                    unsafe_allow_html=True)
+        parq = offensif["equipe_marque"].value_counts()
+        if len(parq):
+            st.plotly_chart(barh_equipes(parq.index.tolist(), parq.values.tolist(),
+                            h=max(220, 42*len(parq))), use_container_width=True)
+        else:
+            st.info("Aucun power play offensif saisi.")
+
+        # --- À quelles minutes ---
+        st.markdown("### À quelles minutes ?")
+        if len(mins_off):
+            serie = mins_off.value_counts().reindex(range(1, 41), fill_value=0).sort_index()
+            coul = [D1_ROUGE if m >= 36 else D1_BORDEAUX_2 for m in serie.index]
+            fig = go.Figure(go.Bar(
+                x=[f"{m}'" for m in serie.index], y=serie.values,
+                marker_color=coul, text=[v if v else "" for v in serie.values],
+                textposition="outside", textangle=0, textfont=dict(size=12, color=D1_BLANC)))
+            fig.update_yaxes(showticklabels=False)
+            fig.add_shape(type="line", x0="35'", x1="35'", y0=0, y1=1, yref="paper",
+                          line=dict(color=D1_GRIS, width=1, dash="dot"))
+            fig.add_annotation(x="35'", y=1, yref="paper", text="Money time", showarrow=False,
+                               font=dict(color=D1_GRIS, size=10), yanchor="bottom", xanchor="left")
+            st.plotly_chart(style_fig(fig, 300), use_container_width=True)
+            st.markdown("<p class='note'>Cyan = 36'–40' (money time) · Slate = avant.</p>",
+                        unsafe_allow_html=True)
+        else:
+            st.info("Pas de minute disponible.")
+
+        # --- En étant mené de combien ---
+        st.markdown("### En étant mené de combien ?")
+        menes = offensif[offensif["situation"] == "Mené"].copy()
+        if len(menes):
+            menes["deficit"] = (-menes["ecart_avant"]).astype(int)
+            dd = menes["deficit"].value_counts().sort_index()
+            labels = [f"−{d} but" + ("s" if d > 1 else "") for d in dd.index]
+            fig2 = go.Figure(go.Bar(x=labels, y=dd.values, marker_color=D1_DANGER,
+                            text=dd.values, textposition="outside", textangle=0,
+                            textfont=dict(size=14, color=D1_BLANC)))
+            fig2.update_yaxes(showticklabels=False)
+            st.plotly_chart(style_fig(fig2, 260), use_container_width=True)
+            st.markdown(f"<p class='note'>{len(menes)} power play marqués en étant mené · "
+                        f"déficit moyen {menes['deficit'].mean():.1f} but.</p>",
+                        unsafe_allow_html=True)
+        else:
+            st.info("Aucun power play offensif marqué en situation de retard.")
+
+        # --- Buteurs ---
+        st.markdown("### Buteurs en power play")
+        bz = offensif["joueur"].value_counts().head(10)
+        if len(bz):
+            noms = [nj(n) for n in bz.index][::-1]
+            vals = bz.values.tolist()[::-1]
+            figb = go.Figure(go.Bar(x=vals, y=noms, orientation="h",
+                            marker_color=D1_ROUGE, text=vals, textposition="outside",
+                            textangle=0, textfont=dict(size=13, color=D1_BLANC), cliponaxis=False))
+            figb.update_xaxes(showticklabels=False)
+            st.plotly_chart(style_fig(figb, max(220, 34*len(bz))), use_container_width=True)
+
+        # --- Export ---
+        exp = pp[["journee", "equipe_marque", "equipe_encaisse", "minute", "periode",
+                  "situation", "score_marque_avant", "score_encaisse_avant", "joueur"]] \
+            .sort_values(["journee", "minute"])
+        dl_csv(exp, "Exporter les buts power play (CSV)", "power_play_d1.csv")
+
+        st.markdown(
+            f"<p class='note' style='margin-top:1rem'>Lecture : un but « power play » est une "
+            f"séquence identifiée comme telle par l'équipe qui l'a saisie "
+            f"({len(EQUIPES_AVEC_ORIGINE)} équipes sur {len(EQUIPES)}). Les buts marqués en étant "
+            f"<i>menant</i> correspondent à des buts dans le but vide laissé par un adversaire "
+            f"lui-même en power play.</p>",
+            unsafe_allow_html=True,
+        )
 
 
 elif page == "Confrontations":
