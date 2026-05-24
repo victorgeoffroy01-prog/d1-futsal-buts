@@ -2260,9 +2260,8 @@ if page == "Fiche équipe":
         ct1, ct2 = st.columns(2)
         with ct1:
             st.markdown("### Impact du premier but")
-            diff_pct = m_win - e_win
-            msg = (f"<b style='color:{D1_BLANC}'>{diff_pct:.0f}%</b> de plus en marquant le premier but"
-                   if diff_pct > 0 else "Reste performante même en encaissant le premier but")
+            msg = (f"{m_win:.0f}% de victoires en marquant le premier but, "
+                   f"{e_win:.0f}% en l'encaissant.")
             st.markdown(f'<div style="background:{D1_CARTE};border-left:3px solid {coul};'
                         f'border-radius:8px;padding:.45rem .75rem;margin-bottom:.5rem;'
                         f'font-size:.82rem;color:{D1_GRIS}">{msg}</div>', unsafe_allow_html=True)
