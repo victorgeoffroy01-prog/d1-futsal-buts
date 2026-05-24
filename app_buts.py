@@ -387,7 +387,7 @@ NAV = {
                     ("🧤", "Power play")],
     "ÉQUIPES":     [("🛡", "Fiche équipe"), ("⚔", "Confrontations"),
                     ("📋", "Rapport équipe")],
-    "JOUEURS":     [("👟", "Buteurs")],
+    "JOUEURS":     [("👟", "Buteurs"), ("🆚", "Comparateur")],
     "MÉTHODO":     [("📖", "Méthodo & Couverture")],
 }
 
@@ -1699,6 +1699,104 @@ elif page == "Buteurs":
                 f"Exporter la fiche de {j.split()[0]}")
 
 # ============================================================================
+# PAGE — COMPARATEUR DE BUTEURS
+# ============================================================================
+elif page == "Comparateur":
+    st.title("Comparateur de buteurs")
+
+    ordre_buteurs = df["joueur"].value_counts().index.tolist()
+    c_sel1, c_sel2 = st.columns(2)
+    jA = c_sel1.selectbox("Joueur A", ordre_buteurs, index=0, key="cmp_a")
+    jB = c_sel2.selectbox("Joueur B", ordre_buteurs,
+                          index=1 if len(ordre_buteurs) > 1 else 0, key="cmp_b")
+
+    if jA == jB:
+        st.info("Choisis deux joueurs différents pour comparer.")
+    else:
+        dA = df[df["joueur"] == jA]
+        dB = df[df["joueur"] == jB]
+        COUL_A, COUL_B = D1_ROUGE, D1_OR
+
+        def _eq_joueur(d):
+            m = d["equipe_marque"].mode()
+            return m.iloc[0] if len(m) else "—"
+        eqA, eqB = _eq_joueur(dA), _eq_joueur(dB)
+
+        def grp_bar(cats, va, vb, h=280):
+            fig = go.Figure()
+            fig.add_trace(go.Bar(name=nj(jA), x=cats, y=va, marker_color=COUL_A,
+                text=[str(x) if x else "" for x in va], textposition="outside",
+                textangle=0, textfont=dict(size=12, color=D1_BLANC), cliponaxis=False))
+            fig.add_trace(go.Bar(name=nj(jB), x=cats, y=vb, marker_color=COUL_B,
+                text=[str(x) if x else "" for x in vb], textposition="outside",
+                textangle=0, textfont=dict(size=12, color=D1_BLANC), cliponaxis=False))
+            fig.update_layout(barmode="group")
+            fig.update_yaxes(showticklabels=False)
+            return style_fig(fig, h)
+
+        # En-tête
+        h1, h2 = st.columns(2)
+        h1.markdown(_carte_stat(jA, len(dA), nc(eqA), COUL_A), unsafe_allow_html=True)
+        h2.markdown(_carte_stat(jB, len(dB), nc(eqB), COUL_B), unsafe_allow_html=True)
+
+        # Repères chiffrés
+        st.markdown("### Repères")
+        rA, rB = st.columns(2)
+        for col_, d, nom, coul_ in [(rA, dA, jA, COUL_A), (rB, dB, jB, COUL_B)]:
+            tot = len(d)
+            mm = d["minute"].dropna().mean()
+            cl = int((d["minute"] >= 36).sum())
+            p2 = (d["periode"] == 2).sum() / (tot or 1) * 100
+            with col_:
+                st.markdown(f"<b style='color:{coul_}'>{nj(nom)}</b>", unsafe_allow_html=True)
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Minute moy", f"{mm:.0f}'" if tot else "—")
+                m2.metric("Clutch 36-40'", cl)
+                m3.metric("2e période", f"{p2:.0f}%")
+
+        # Par période
+        st.markdown("### Buts par période")
+        vA = [int((dA["periode"] == 1).sum()), int((dA["periode"] == 2).sum())]
+        vB = [int((dB["periode"] == 1).sum()), int((dB["periode"] == 2).sum())]
+        st.plotly_chart(grp_bar(["1re période", "2e période"], vA, vB, 260),
+                        use_container_width=True)
+
+        # Situation au moment du but
+        st.markdown("### Situation au moment du but")
+        AFF = {"Mené": "Est mené", "Égalité": "À égalité", "Menant": "En tête"}
+        base_sit = ["Mené", "Égalité", "Menant"]
+        sA = dA["situation"].value_counts(); sB = dB["situation"].value_counts()
+        st.plotly_chart(grp_bar([AFF[s] for s in base_sit],
+                                [int(sA.get(s, 0)) for s in base_sit],
+                                [int(sB.get(s, 0)) for s in base_sit], 260),
+                        use_container_width=True)
+
+        # Tranches de 5 minutes
+        st.markdown("### Buts par tranche de 5 minutes")
+        tr_cats = [f"{i+1}-{i+5}'" for i in range(0, 40, 5)]
+        def _tr(d):
+            t = pd.cut(d["minute"].dropna(), bins=range(0, 41, 5),
+                       labels=tr_cats).value_counts().reindex(tr_cats, fill_value=0)
+            return [int(x) for x in t]
+        st.plotly_chart(grp_bar(tr_cats, _tr(dA), _tr(dB), 280), use_container_width=True)
+
+        # Profil par type d'action (si origine dispo pour les deux)
+        dA_o = dA[dA["origine"].notna()]; dB_o = dB[dB["origine"].notna()]
+        if len(dA_o) and len(dB_o):
+            st.markdown("### Profil par type d'action")
+            oA = dA_o["origine"].value_counts(); oB = dB_o["origine"].value_counts()
+            cats = sorted(set(oA.index) | set(oB.index))
+            st.plotly_chart(grp_bar(cats,
+                                    [int(oA.get(c, 0)) for c in cats],
+                                    [int(oB.get(c, 0)) for c in cats], 320),
+                            use_container_width=True)
+        else:
+            st.markdown("<p class='note'>Profil par type d'action indisponible : l'origine "
+                        "des buts n'est saisie que pour certaines équipes.</p>",
+                        unsafe_allow_html=True)
+
+
+# ============================================================================
 # PAGE — PROFIL TEMPOREL
 # ============================================================================
 elif page == "Profil temporel":
@@ -2670,25 +2768,6 @@ elif page == "Méthodo & Couverture":
         f'<p style="margin:0"><b>Origines des buts :</b> saisie en cours pour {len(EQUIPES_AVEC_ORIGINE)} équipes — '
         f'{df["origine"].notna().sum()} buts sur {len(df)} analysés '
         f'({df["origine"].notna().mean()*100:.0f}%)</p>'
-        f'</div>',
-        unsafe_allow_html=True
-    )
-
-    st.markdown("---")
-    st.markdown("### Limites méthodologiques")
-    st.markdown(
-        f'<div style="background:{D1_CARTE};border-radius:10px;padding:1rem 1.2rem">'
-        f'<p style="margin:0 0 .5rem 0"><b>Matchs déduits des buts :</b> la base ne contient que '
-        f'des buts. Un match est reconstitué à partir de ses buts — un match nul 0-0 n’apparaît '
-        f'donc pas et n’est pas comptabilisé.</p>'
-        f'<p style="margin:0 0 .5rem 0"><b>Pas de table de matchs réelle :</b> totaux de matchs, '
-        f'moyennes par match et bilans reposent sur ces matchs déduits, pas sur une feuille de '
-        f'scores officiels.</p>'
-        f'<p style="margin:0 0 .5rem 0"><b>Pas de minutes jouées par joueur :</b> les statistiques '
-        f'de buteurs sont des totaux bruts, non ramenés au temps de jeu.</p>'
-        f'<p style="margin:0"><b>Origines partielles :</b> l’origine des buts n’existe que pour les '
-        f'équipes l’ayant saisie ({len(EQUIPES_AVEC_ORIGINE)} sur {len(EQUIPES)}). Toute analyse par '
-        f'origine (power play, types d’action, profil défensif…) ne porte que sur ces équipes.</p>'
         f'</div>',
         unsafe_allow_html=True
     )
