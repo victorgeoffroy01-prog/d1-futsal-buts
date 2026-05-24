@@ -2536,6 +2536,23 @@ if page == "Fiche équipe":
                 textposition="outside", textangle=0, textfont=dict(size=14,color=D1_BLANC), cliponaxis=False))
             fig_t4.update_yaxes(autorange="reversed")
             st.plotly_chart(style_fig(fig_t4, max(280,30*len(oo_t4))), use_container_width=True)
+
+            st.markdown("### Buteurs par type d'action")
+            st.markdown("<p class='note'>Pour un type d'action donné, les joueurs de l'équipe qui marquent le plus dessus.</p>",
+                        unsafe_allow_html=True)
+            og_sel = st.selectbox("Type d'action", oo_t4.index.tolist(), key="conc_orig_fiche")
+            sous_og = dpour[dpour["origine"] == og_sel]
+            bb_og = sous_og["joueur"].value_counts().head(10)
+            if len(bb_og):
+                noms_og = [nj(n) for n in bb_og.index][::-1]
+                vals_og = bb_og.values.tolist()[::-1]
+                fig_cog = go.Figure(go.Bar(x=vals_og, y=noms_og, orientation="h",
+                    marker_color=coul, text=vals_og, textposition="outside", textangle=0,
+                    textfont=dict(size=13, color=D1_BLANC), cliponaxis=False))
+                fig_cog.update_xaxes(showticklabels=False)
+                st.plotly_chart(style_fig(fig_cog, max(220, 30*len(bb_og))), use_container_width=True)
+                st.markdown(f"<p class='note'>{int(len(sous_og))} buts de {nc(eq)} sur {og_sel.lower()}.</p>",
+                            unsafe_allow_html=True)
         else:
             st.info("Origine des buts pas encore renseignée pour cette équipe.")
 
@@ -2653,6 +2670,25 @@ elif page == "Méthodo & Couverture":
         f'<p style="margin:0"><b>Origines des buts :</b> saisie en cours pour {len(EQUIPES_AVEC_ORIGINE)} équipes — '
         f'{df["origine"].notna().sum()} buts sur {len(df)} analysés '
         f'({df["origine"].notna().mean()*100:.0f}%)</p>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown("---")
+    st.markdown("### Limites méthodologiques")
+    st.markdown(
+        f'<div style="background:{D1_CARTE};border-radius:10px;padding:1rem 1.2rem">'
+        f'<p style="margin:0 0 .5rem 0"><b>Matchs déduits des buts :</b> la base ne contient que '
+        f'des buts. Un match est reconstitué à partir de ses buts — un match nul 0-0 n’apparaît '
+        f'donc pas et n’est pas comptabilisé.</p>'
+        f'<p style="margin:0 0 .5rem 0"><b>Pas de table de matchs réelle :</b> totaux de matchs, '
+        f'moyennes par match et bilans reposent sur ces matchs déduits, pas sur une feuille de '
+        f'scores officiels.</p>'
+        f'<p style="margin:0 0 .5rem 0"><b>Pas de minutes jouées par joueur :</b> les statistiques '
+        f'de buteurs sont des totaux bruts, non ramenés au temps de jeu.</p>'
+        f'<p style="margin:0"><b>Origines partielles :</b> l’origine des buts n’existe que pour les '
+        f'équipes l’ayant saisie ({len(EQUIPES_AVEC_ORIGINE)} sur {len(EQUIPES)}). Toute analyse par '
+        f'origine (power play, types d’action, profil défensif…) ne porte que sur ces équipes.</p>'
         f'</div>',
         unsafe_allow_html=True
     )
