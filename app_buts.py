@@ -2794,20 +2794,3 @@ elif page == "Méthodo & Couverture":
             f'</div>',
             unsafe_allow_html=True
         )
-
-    st.markdown("---")
-    st.markdown("### Source des données & mise à jour")
-    st.markdown(
-        f'<div style="background:{D1_CARTE};border-radius:10px;padding:1rem 1.2rem">'
-        f'<p style="margin:0 0 .5rem 0"><b>Source :</b> fichier Excel <code>But_D1.xlsx</code> — '
-        f'mis à jour manuellement après chaque journée.</p>'
-        f'<p style="margin:0 0 .5rem 0"><b>Migration :</b> le script <code>python migration_buts.py</code> '
-        f'lit le fichier Excel et génère la base SQLite <code>futsal_d1.db</code>.</p>'
-        f'<p style="margin:0 0 .5rem 0"><b>Données actuelles :</b> {len(df)} buts · '
-        f'{len(EQUIPES)} équipes · J{min(JOURNEES)}–J{max(JOURNEES)}</p>'
-        f'<p style="margin:0"><b>Origines des buts :</b> saisie en cours pour {len(EQUIPES_AVEC_ORIGINE)} équipes — '
-        f'{df["origine"].notna().sum()} buts sur {len(df)} analysés '
-        f'({df["origine"].notna().mean()*100:.0f}%)</p>'
-        f'</div>',
-        unsafe_allow_html=True
-    )
