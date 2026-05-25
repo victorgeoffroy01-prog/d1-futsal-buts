@@ -307,12 +307,44 @@ def nc(eq):
 def ncs(liste):
     return [nc(e) for e in liste]
 
+def _nom_famille(nom):
+    parts = str(nom).strip().split()
+    return parts[-1] if parts else str(nom)
+
+def _construire_noms_affiche(noms):
+    """Construit {nom_complet: label} pour les graphes.
+    Si plusieurs joueurs partagent le même nom de famille (frères, homonymes),
+    on préfixe l'initiale du prénom (ex: 'I. AHSSEN' / 'Y. AHSSEN').
+    En cas de même initiale aussi, on garde le prénom complet."""
+    from collections import defaultdict
+    groupes = defaultdict(list)
+    for n in noms:
+        groupes[_nom_famille(n).upper()].append(n)
+    mapping = {}
+    for fam, membres in groupes.items():
+        if len(membres) <= 1:
+            mapping[membres[0]] = _nom_famille(membres[0])
+            continue
+        par_initiale = defaultdict(list)
+        for n in membres:
+            parts = n.strip().split()
+            ini = parts[0][0].upper() if len(parts) > 1 and parts[0] else ""
+            par_initiale[ini].append(n)
+        for ini, lst in par_initiale.items():
+            if len(lst) == 1:
+                mapping[lst[0]] = f"{ini}. {_nom_famille(lst[0])}" if ini else _nom_famille(lst[0])
+            else:
+                for n in lst:  # même initiale -> prénom complet
+                    prenom = n.strip().split()[0]
+                    mapping[n] = f"{prenom} {_nom_famille(n)}"
+    return mapping
+
+NOM_AFFICHE = _construire_noms_affiche(df["joueur"].dropna().unique().tolist())
+
 def nj(nom, court=False):
-    """Nom de famille en priorité (dernier mot) pour graphes."""
-    parts = nom.strip().split()
-    if len(parts) <= 1:
-        return nom
-    return parts[-1]  # Nom de famille = dernier token
+    """Label de buteur pour les graphes : nom de famille, avec initiale du
+    prénom si un homonyme existe (frères, etc.)."""
+    return NOM_AFFICHE.get(nom, _nom_famille(nom))
 
 def njs(liste):
     return [nj(n) for n in liste]
