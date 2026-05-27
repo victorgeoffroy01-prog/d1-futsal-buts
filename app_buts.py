@@ -349,12 +349,14 @@ def nj(nom, court=False):
 def njs(liste):
     return [nj(n) for n in liste]
 
-# Buts contre son camp : crédités à l'équipe (score, buts pour) mais non
-# attribuables à un buteur -> exclus de tous les classements/fiches de buteurs.
+# Buts non attribuables à un buteur : contre son camp (CSC) et buteur inconnu
+# ('?', ex. match forfait). Crédités à l'équipe (score, buts pour) mais exclus
+# de tous les classements/fiches de buteurs.
 CSC = "CSC"
+NON_BUTEURS = {"CSC", "?"}
 def sans_csc(d):
-    """Retire les buts contre son camp (non rattachables à un buteur)."""
-    return d[d["joueur"].astype(str).str.upper() != CSC]
+    """Retire les buts non rattachables à un buteur (CSC, buteur inconnu '?')."""
+    return d[~d["joueur"].astype(str).str.strip().str.upper().isin(NON_BUTEURS)]
 
 # ============================================================================
 # FONCTIONS MÉTIER

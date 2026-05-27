@@ -65,6 +65,17 @@ def sans_accents_min(s):
     return " ".join(s.split())
 
 
+def to_int(v):
+    """Convertit en entier si possible, sinon None.
+    Tolère les minutes/périodes inconnues saisies '?' (ex: match forfait)."""
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None
+
+
 def est_feuille_principale(nom):
     """Vrai si 'nom' désigne la feuille des buts (insensible casse/espaces)."""
     a = sans_accents_min(nom)
@@ -201,8 +212,8 @@ def lire_buts_principale(wb):
             "equipe_exterieure": ext,
             "equipe_marque":     marque,
             "equipe_encaisse":   encaisse,
-            "periode":           int(periode) if periode is not None else None,
-            "minute":            int(minute) if minute is not None else None,
+            "periode":           to_int(periode),
+            "minute":            to_int(minute),
             "score_marque_avant":   int(sma) if isinstance(sma, (int, float)) else None,
             "score_encaisse_avant": int(sea_) if isinstance(sea_, (int, float)) else None,
             "joueur":            joueur,
@@ -247,8 +258,8 @@ def lire_origines(wb):
                 continue
             cle = cle_rattachement(
                 int(journee),
-                int(minute) if minute is not None else None,
-                int(periode) if periode is not None else None,
+                to_int(minute),
+                to_int(periode),
                 joueur,
             )
             if cle not in origines:
