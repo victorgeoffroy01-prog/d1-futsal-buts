@@ -406,13 +406,14 @@ def evolution_classement():
 
 def reconstruire_score(df_match, dom, ext):
     # Les minutes sont absolues (1-40 sur tout le match)
-    buts = df_match.sort_values(["periode","minute"])
+    buts = df_match.sort_values(["periode","minute"], na_position="last")
     sd, se = 0, 0
     evts = []
     for _, b in buts.iterrows():
         if b["equipe_marque"]==dom: sd+=1
         else: se+=1
-        evts.append({"minute":int(b["minute"]),"periode":int(b["periode"]),
+        evts.append({"minute": int(b["minute"]) if pd.notna(b["minute"]) else None,
+                     "periode": int(b["periode"]) if pd.notna(b["periode"]) else None,
                      "equipe":b["equipe_marque"],"joueur":b["joueur"],
                      "score_dom":sd,"score_ext":se,
                      "origine":b["origine"] if pd.notna(b["origine"]) else "—"})
@@ -729,7 +730,9 @@ def pdf_match(journee, dom, ext):
     data_chr = [["Per.", "Min", "Buteur", "Équipe", "Score"]]
     for e in events:
         data_chr.append([
-            f"P{e['periode']}", f"{e['minute']}'", e["joueur"],
+            f"P{e['periode'] if e['periode'] is not None else '?'}",
+            f"{e['minute']}'" if e['minute'] is not None else "?",
+            e["joueur"],
             e["equipe"].split()[0], f"{e['score_dom']}—{e['score_ext']}"
         ])
     t_chr = Table(data_chr, colWidths=[1.5*cm,1.5*cm,5.5*cm,4.5*cm,2.5*cm])
@@ -1023,7 +1026,8 @@ def analyser_momentum(eq):
         dm = df[(df["journee"]==m["journee"])&(df["equipe_domicile"]==m["dom"])&
                 (df["equipe_exterieure"]==m["ext"])]
         if len(dm)<2: continue
-        goals = dm.sort_values(["periode","minute"])
+        goals = dm.dropna(subset=["minute"]).sort_values(["periode","minute"])
+        if len(goals)<2: continue
         mins = goals["minute"].values; teams = goals["equipe_marque"].values
         for i in range(len(goals)-1):
             delta = max(1,int(mins[i+1])-int(mins[i]))
@@ -1443,8 +1447,8 @@ elif page == "Fiche match":
 
     # ---- Momentum : minutes absolues 1-40, mi-temps à x=20 ----
     st.markdown("### Momentum du match")
-    # On utilise les minutes directement (déjà absolues 1-40)
-    xs  = [0] + [e["minute"] for e in events] + [40]
+    # On utilise les minutes directement (déjà absolues 1-40) ; minute None -> fin du match
+    xs  = [0] + [(e["minute"] if e["minute"] is not None else 40) for e in events] + [40]
     yd  = [0] + [e["score_dom"] for e in events] + [(events[-1]["score_dom"] if events else 0)]
     ye  = [0] + [e["score_ext"] for e in events] + [(events[-1]["score_ext"] if events else 0)]
 
@@ -1488,7 +1492,7 @@ elif page == "Fiche match":
             f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
             f'border-left:3px solid {coul};border-radius:7px;padding:.3rem .7rem;max-width:54%">'
             f'{lg} <b style="font-size:.86rem">{e["joueur"]}</b>'
-            f'<span style="color:{D1_GRIS};font-size:.76rem"> {per} {e["minute"]}\' </span>'
+            f'<span style="color:{D1_GRIS};font-size:.76rem"> {per} {e["minute"] if e["minute"] is not None else "?"}\' </span>'
             f'<b style="color:{coul}">{score_txt}</b>{orig}'
             f'</div></div>',
             unsafe_allow_html=True
