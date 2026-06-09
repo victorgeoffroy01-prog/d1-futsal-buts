@@ -520,6 +520,8 @@ with st.sidebar:
                 st.rerun()
     st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
     st.caption(f"{len(df)} buts · {len(EQUIPES)} équipes · J{min(JOURNEES)}–J{max(JOURNEES)}")
+    if len(df_po):
+        st.caption(f"Phase finale : {len(df_po)} buts")
 
 page = st.session_state.page
 
