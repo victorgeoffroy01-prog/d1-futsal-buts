@@ -76,6 +76,14 @@ def to_int(v):
         return None
 
 
+def journee_val(v):
+    """Entier si journée numérique, sinon texte tel quel (PO1, PO2, POF...)."""
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return nettoie(v)
+
+
 def est_feuille_principale(nom):
     """Vrai si 'nom' désigne la feuille des buts (insensible casse/espaces)."""
     a = sans_accents_min(nom)
@@ -207,7 +215,7 @@ def lire_buts_principale(wb):
             sma, sea_ = None, None
 
         buts.append({
-            "journee":           int(journee),
+            "journee":           journee_val(journee),
             "equipe_domicile":   dom,
             "equipe_exterieure": ext,
             "equipe_marque":     marque,
@@ -257,7 +265,7 @@ def lire_origines(wb):
             if origine is None:
                 continue
             cle = cle_rattachement(
-                int(journee),
+                journee_val(journee),
                 to_int(minute),
                 to_int(periode),
                 joueur,

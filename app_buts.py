@@ -12,6 +12,7 @@ from io import BytesIO
 import plotly.graph_objects as go
 from PIL import Image
 import base64
+from collections import defaultdict
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -276,13 +277,24 @@ def charger():
         return None
     return pd.read_sql_query("SELECT * FROM but", sqlite3.connect(DB_PATH))
 
-df = charger()
-if df is None:
+df_full = charger()
+if df_full is None:
     st.error("Données introuvables : `But_D1.xlsx` (+ `schema_buts.sql`) ou `futsal_d1.db` doit être présent dans le dépôt.")
     st.stop()
 
+# Sépare saison régulière et phase finale. La journée des matchs de phase finale
+# est saisie sous forme texte : PO1 (demi aller), PO2 (demi retour), POF (finale).
+# Tout le code existant continue à travailler sur df = saison régulière, comme
+# avant. La phase finale a ses pages dédiées (univers PHASE FINALE).
+_phase_po = df_full["journee"].astype(str).str.upper().str.startswith("PO")
+df_po = df_full[_phase_po].copy()
+df    = df_full[~_phase_po].copy()
+# Garde les journées numériques triées comme entiers
+df["journee"] = pd.to_numeric(df["journee"], errors="coerce").astype("Int64")
+df = df.dropna(subset=["journee"])
+
 EQUIPES   = sorted(df["equipe_marque"].dropna().unique().tolist())
-JOURNEES  = sorted(df["journee"].dropna().unique().tolist())
+JOURNEES  = sorted([int(j) for j in df["journee"].dropna().unique().tolist()])
 EQUIPES_AVEC_ORIGINE = sorted(
     df.loc[df["origine"].notna(), "equipe_marque"].dropna().unique().tolist()
 )
@@ -420,6 +432,62 @@ def reconstruire_score(df_match, dom, ext):
     return evts
 
 # ============================================================================
+# HELPERS — PHASE FINALE
+# ============================================================================
+def _matchs_phase(phase):
+    """Liste des matchs d'une phase finale (PO1/PO2/POF) sous forme
+    [(dom, ext, score_dom, score_ext, df_match), ...]"""
+    sub = df_po[df_po["journee"].astype(str).str.upper() == phase]
+    res = []
+    for (dom, ext), g in sub.groupby(["equipe_domicile", "equipe_exterieure"]):
+        sd = int((g["equipe_marque"] == dom).sum())
+        se = int((g["equipe_marque"] == ext).sum())
+        res.append((dom, ext, sd, se, g))
+    return res
+
+
+def _bloc_match(dom, ext, sd, se, label, joue=True):
+    """Carte HTML d'un match aller/retour/finale."""
+    coul_d = COULEUR_EQUIPE.get(dom, D1_ROUGE)
+    coul_e = COULEUR_EQUIPE.get(ext, D1_BLEU)
+    if joue:
+        score_html = (f'<span style="font-size:1.4rem;font-weight:700;color:{D1_BLANC}">'
+                      f'{sd} <span style="color:{D1_GRIS};font-weight:400">–</span> {se}</span>')
+    else:
+        score_html = f'<span style="color:{D1_GRIS};font-style:italic">à venir</span>'
+    return (
+        f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+        f'border-radius:8px;padding:.7rem .9rem;margin:.4rem 0">'
+        f'<div style="color:{D1_GRIS};font-size:.7rem;text-transform:uppercase;'
+        f'letter-spacing:.5px;margin-bottom:.3rem">{label}</div>'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem">'
+        f'<span style="border-left:3px solid {coul_d};padding-left:.5rem;'
+        f'font-size:.9rem">{nc(dom)}</span>'
+        f'{score_html}'
+        f'<span style="border-right:3px solid {coul_e};padding-right:.5rem;'
+        f'font-size:.9rem;text-align:right">{nc(ext)}</span>'
+        f'</div></div>'
+    )
+
+
+def _qualifie(pair_matches):
+    """Renvoie l'équipe qualifiée d'une double confrontation, ou None si
+    incomplet / égalité parfaite (à départager en prolongation/TAB)."""
+    if len(pair_matches) < 2:
+        return None
+    score = defaultdict(int)
+    for dom, ext, sd, se, _ in pair_matches:
+        score[dom] += sd
+        score[ext] += se
+    eqs = list(score.keys())
+    if len(eqs) != 2:
+        return None
+    a, b = eqs
+    if score[a] > score[b]: return a
+    if score[b] > score[a]: return b
+    return None
+
+# ============================================================================
 # SIDEBAR — navigation par catégories
 # ============================================================================
 NAV = {
@@ -430,6 +498,7 @@ NAV = {
     "ÉQUIPES":     [("🛡", "Fiche équipe"), ("⚔", "Confrontations"),
                     ("📋", "Rapport équipe")],
     "JOUEURS":     [("👟", "Buteurs"), ("🆚", "Comparateur")],
+    "PHASE FINALE":[("🏅", "Bracket"), ("🎯", "Buteurs PO")],
     "MÉTHODO":     [("📖", "Méthodo & Couverture")],
 }
 
@@ -2725,6 +2794,136 @@ if page == "Fiche équipe":
 # ============================================================================
 # PAGE — LEXIQUE
 # ============================================================================
+
+elif page == "Bracket":
+    st.title("Phase finale")
+
+    if df_po.empty:
+        st.info("Aucun match de phase finale enregistré pour l'instant.")
+    else:
+        from collections import defaultdict
+        m_po1 = _matchs_phase("PO1")
+        m_po2 = _matchs_phase("PO2")
+        m_pof = _matchs_phase("POF")
+
+        # Regroupe les matchs PO1+PO2 par paire d'équipes (demi-finales)
+        demis = defaultdict(list)
+        for m in m_po1 + m_po2:
+            dom, ext = m[0], m[1]
+            cle = frozenset((dom, ext))
+            demis[cle].append(m)
+
+        if not demis:
+            st.info("Demi-finales pas encore commencées.")
+        else:
+            st.markdown("### Demi-finales")
+            cols = st.columns(2)
+            qualifies = []
+            for idx, (cle, matches) in enumerate(demis.items()):
+                with cols[idx % 2]:
+                    eqs = list(cle)
+                    # ordre : match aller (PO1) en premier
+                    matches_tries = sorted(matches, key=lambda m: 0 if m[4]["journee"].astype(str).str.upper().iloc[0]=="PO1" else 1)
+                    # cumul
+                    cum = defaultdict(int)
+                    for dom, ext, sd, se, _ in matches_tries:
+                        cum[dom] += sd; cum[ext] += se
+                    eq_a, eq_b = sorted(eqs, key=lambda e: -cum[e])
+                    titre = f"{nc(eq_a)} – {nc(eq_b)}"
+                    st.markdown(f"<div style='color:{D1_BLANC};font-weight:600;"
+                                f"margin:.5rem 0 .2rem 0'>{titre}</div>",
+                                unsafe_allow_html=True)
+                    # affichage aller / retour
+                    for dom, ext, sd, se, dfm in matches_tries:
+                        ph = str(dfm["journee"].iloc[0]).upper()
+                        lib = "Aller" if ph == "PO1" else "Retour"
+                        st.markdown(_bloc_match(dom, ext, sd, se, lib),
+                                    unsafe_allow_html=True)
+                    if len(matches_tries) < 2:
+                        st.markdown(_bloc_match(eq_a, eq_b, 0, 0, "Retour", joue=False),
+                                    unsafe_allow_html=True)
+                    # cumul + qualifié
+                    qual = _qualifie(matches_tries)
+                    cumul_txt = (f"Cumul : <b>{nc(eq_a)} {cum[eq_a]}</b> – "
+                                 f"<b>{cum[eq_b]} {nc(eq_b)}</b>")
+                    if qual:
+                        qualifies.append(qual)
+                        cumul_txt += f"<br><span style='color:{D1_VERT};font-weight:600'>" \
+                                     f"{nc(qual)} qualifié</span>"
+                    elif len(matches_tries) >= 2:
+                        cumul_txt += f"<br><span style='color:{D1_OR}'>" \
+                                     f"Égalité — à départager (prolongation / TAB)</span>"
+                    st.markdown(f"<p class='note' style='margin-top:.3rem'>{cumul_txt}</p>",
+                                unsafe_allow_html=True)
+
+            # Finale
+            st.markdown("### Finale")
+            if m_pof:
+                for dom, ext, sd, se, _ in m_pof:
+                    st.markdown(_bloc_match(dom, ext, sd, se, "Finale"),
+                                unsafe_allow_html=True)
+                    if sd != se:
+                        champion = dom if sd > se else ext
+                        coul = COULEUR_EQUIPE.get(champion, D1_ROUGE)
+                        st.markdown(
+                            f'<div style="background:{D1_CARTE};border:2px solid {coul};'
+                            f'border-radius:10px;padding:1rem;text-align:center;margin-top:.5rem">'
+                            f'<div style="color:{D1_GRIS};font-size:.8rem;letter-spacing:1px;'
+                            f'text-transform:uppercase">Champion de France</div>'
+                            f'<div style="color:{coul};font-size:1.5rem;font-weight:700;'
+                            f'margin-top:.3rem">🏆 {champion}</div></div>',
+                            unsafe_allow_html=True)
+            elif len(qualifies) == 2:
+                st.markdown(_bloc_match(qualifies[0], qualifies[1], 0, 0, "Finale", joue=False),
+                            unsafe_allow_html=True)
+            else:
+                st.markdown(f"<p class='note'>Finale à venir — opposera les deux "
+                            f"qualifiés des demi-finales.</p>", unsafe_allow_html=True)
+
+
+elif page == "Buteurs PO":
+    st.title("Buteurs en phase finale")
+
+    if df_po.empty:
+        st.info("Aucun but de phase finale enregistré.")
+    else:
+        d_po = sans_csc(df_po)
+        st.markdown(f"<p class='note'>{len(df_po)} buts en phase finale · "
+                    f"{d_po['joueur'].nunique()} buteurs différents.</p>",
+                    unsafe_allow_html=True)
+
+        clt_po = (d_po.groupby("joueur")
+                  .agg(buts=("but_id", "count"),
+                       equipe=("equipe_marque", lambda s: s.mode().iloc[0]))
+                  .sort_values("buts", ascending=False)
+                  .reset_index())
+
+        st.markdown("### Classement")
+        for i, row in clt_po.head(15).iterrows():
+            coul = COULEUR_EQUIPE.get(row["equipe"], D1_ROUGE)
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:.7rem;'
+                f'background:{D1_CARTE};border-left:3px solid {coul};'
+                f'border-radius:6px;padding:.5rem .8rem;margin:.25rem 0">'
+                f'<span style="color:{D1_GRIS};width:1.5rem">{i+1}.</span>'
+                f'<span style="flex:1;color:{D1_BLANC};font-weight:500">{row["joueur"]}</span>'
+                f'<span style="color:{D1_GRIS};font-size:.85rem">{nc(row["equipe"])}</span>'
+                f'<span style="color:{coul};font-weight:700;font-size:1.1rem;min-width:2rem;'
+                f'text-align:right">{row["buts"]}</span>'
+                f'</div>',
+                unsafe_allow_html=True)
+
+        # Comparaison saison régulière / PO pour ces buteurs
+        st.markdown("### Saison régulière vs Phase finale")
+        cmp = []
+        for j in clt_po["joueur"]:
+            reg = int((df["joueur"] == j).sum())
+            po = int((d_po["joueur"] == j).sum())
+            cmp.append({"Buteur": j, "Saison régulière": reg, "Phase finale": po})
+        cmp_df = pd.DataFrame(cmp)
+        st.dataframe(cmp_df, use_container_width=True, hide_index=True)
+
+
 elif page == "Méthodo & Couverture":
     st.title("Méthodo & Couverture des données")
 
