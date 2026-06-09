@@ -399,7 +399,9 @@ def construire_classement():
         bc=int(df[df["equipe_encaisse"]==eq].shape[0])
         rows.append({"equipe":eq,"J":len(res),"V":v,"N":n,"D":d,
                      "Pts":3*v+n,"BP":bp,"BC":bc,"Diff":bp-bc,"forme":res})
-    return pd.DataFrame(rows).sort_values("Pts",ascending=False).reset_index(drop=True)
+    return (pd.DataFrame(rows)
+            .sort_values(["Pts","Diff","BP"], ascending=[False,False,False])
+            .reset_index(drop=True))
 
 @st.cache_data
 def evolution_classement():
@@ -487,6 +489,56 @@ def _qualifie(pair_matches):
     if score[b] > score[a]: return b
     return None
 
+
+def _detail_match_po(dom, ext, dfm):
+    """Affiche la chronologie et les origines d'un match PO."""
+    g = dfm.sort_values(["periode", "minute"], na_position="last")
+    sd, se = 0, 0
+    for _, b in g.iterrows():
+        if b["equipe_marque"] == dom: sd += 1
+        else: se += 1
+        coul = COULEUR_EQUIPE.get(b["equipe_marque"], D1_ROUGE)
+        is_dom = (b["equipe_marque"] == dom)
+        align = "flex-start" if is_dom else "flex-end"
+        mi = f"{int(b['minute'])}'" if pd.notna(b["minute"]) else "?"
+        per = f"P{int(b['periode'])}" if pd.notna(b["periode"]) else ""
+        orig = (f" <span style='color:{D1_GRIS};font-size:.72rem'>· {b['origine']}</span>"
+                if pd.notna(b["origine"]) else "")
+        st.markdown(
+            f'<div style="display:flex;justify-content:{align};margin:.18rem 0">'
+            f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+            f'border-left:3px solid {coul};border-radius:7px;padding:.3rem .7rem;max-width:60%">'
+            f'<b style="font-size:.86rem">{b["joueur"]}</b>'
+            f'<span style="color:{D1_GRIS};font-size:.76rem"> {per} {mi}</span>'
+            f'<b style="color:{coul}"> {sd}–{se}</b>{orig}'
+            f'</div></div>',
+            unsafe_allow_html=True
+        )
+    # Origines du match si renseignées
+    oo = g["origine"].dropna()
+    if len(oo):
+        rep = oo.value_counts()
+        st.markdown(f"<p class='note' style='margin-top:.5rem'><b>Origines :</b> " +
+                    " · ".join(f"{o} ({n})" for o, n in rep.items()) + "</p>",
+                    unsafe_allow_html=True)
+
+
+def _stats_po_equipe(eq):
+    """Stats d'une équipe sur l'ensemble de la phase finale."""
+    pour = df_po[df_po["equipe_marque"] == eq]
+    contre = df_po[df_po["equipe_encaisse"] == eq]
+    # matchs joués (paires uniques journee+dom+ext impliquant l'équipe)
+    matchs = df_po[(df_po["equipe_domicile"] == eq) | (df_po["equipe_exterieure"] == eq)]
+    n_matchs = matchs.groupby(["journee", "equipe_domicile", "equipe_exterieure"]).ngroups
+    return {
+        "matchs": n_matchs,
+        "buts_pour": len(pour),
+        "buts_contre": len(contre),
+        "diff": len(pour) - len(contre),
+        "pour_df": pour,
+        "contre_df": contre,
+    }
+
 # ============================================================================
 # SIDEBAR — navigation par catégories
 # ============================================================================
@@ -498,7 +550,8 @@ NAV = {
     "ÉQUIPES":     [("🛡", "Fiche équipe"), ("⚔", "Confrontations"),
                     ("📋", "Rapport équipe")],
     "JOUEURS":     [("👟", "Buteurs"), ("🆚", "Comparateur")],
-    "PHASE FINALE":[("🏅", "Bracket"), ("🎯", "Buteurs PO")],
+    "PHASE FINALE":[("🏅", "Bracket"), ("🛡", "Stats équipes PO"),
+                    ("🎯", "Buteurs PO"), ("🎬", "Origines PO")],
     "MÉTHODO":     [("📖", "Méthodo & Couverture")],
 }
 
@@ -1339,7 +1392,9 @@ elif page == "Classement":
             bc=int(df_eq.loc[df_eq["equipe_encaisse"]==eq].shape[0])
             rows.append({"equipe":eq,"J":len(res),"V":v,"N":n,"D":d,
                          "Pts":3*v+n,"BP":bp,"BC":bc,"Diff":bp-bc,"forme":res})
-        return pd.DataFrame(rows).sort_values("Pts",ascending=False).reset_index(drop=True)
+        return (pd.DataFrame(rows)
+                .sort_values(["Pts","Diff","BP"], ascending=[False,False,False])
+                .reset_index(drop=True))
 
     clt = construire_classement_filtre(j_filtre)
     if j_filtre < j_max:
@@ -2835,12 +2890,14 @@ elif page == "Bracket":
                     st.markdown(f"<div style='color:{D1_BLANC};font-weight:600;"
                                 f"margin:.5rem 0 .2rem 0'>{titre}</div>",
                                 unsafe_allow_html=True)
-                    # affichage aller / retour
+                    # affichage aller / retour + drill-down
                     for dom, ext, sd, se, dfm in matches_tries:
                         ph = str(dfm["journee"].iloc[0]).upper()
-                        lib = "Aller" if ph == "PO1" else "Retour"
+                        lib = "Aller" if ph == "PO1" else ("Retour" if ph == "PO2" else "Finale")
                         st.markdown(_bloc_match(dom, ext, sd, se, lib),
                                     unsafe_allow_html=True)
+                        with st.expander(f"Détail — {nc(dom)} {sd}–{se} {nc(ext)}"):
+                            _detail_match_po(dom, ext, dfm)
                     if len(matches_tries) < 2:
                         st.markdown(_bloc_match(eq_a, eq_b, 0, 0, "Retour", joue=False),
                                     unsafe_allow_html=True)
@@ -2861,9 +2918,11 @@ elif page == "Bracket":
             # Finale
             st.markdown("### Finale")
             if m_pof:
-                for dom, ext, sd, se, _ in m_pof:
+                for dom, ext, sd, se, dfm in m_pof:
                     st.markdown(_bloc_match(dom, ext, sd, se, "Finale"),
                                 unsafe_allow_html=True)
+                    with st.expander(f"Détail — {nc(dom)} {sd}–{se} {nc(ext)}"):
+                        _detail_match_po(dom, ext, dfm)
                     if sd != se:
                         champion = dom if sd > se else ext
                         coul = COULEUR_EQUIPE.get(champion, D1_ROUGE)
@@ -2883,6 +2942,99 @@ elif page == "Bracket":
                             f"qualifiés des demi-finales.</p>", unsafe_allow_html=True)
 
 
+elif page == "Stats équipes PO":
+    st.title("Stats des équipes — Phase finale")
+    if df_po.empty:
+        st.info("Aucune équipe encore impliquée en phase finale.")
+    else:
+        eqs_po = sorted(set(df_po["equipe_domicile"].dropna()) | set(df_po["equipe_exterieure"].dropna()))
+        eq = st.selectbox("Équipe", eqs_po, key="po_eq_sel")
+        coul = COULEUR_EQUIPE.get(eq, D1_ROUGE)
+        s = _stats_po_equipe(eq)
+
+        # Header carte
+        st.markdown(
+            f'<div style="background:{D1_CARTE};border:1px solid {D1_BORDEAUX_2};'
+            f'border-left:4px solid {coul};border-radius:8px;padding:.8rem 1rem;margin:.6rem 0">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center">'
+            f'<div><b style="color:{coul};font-size:1.1rem">{eq}</b>'
+            f'<div style="color:{D1_GRIS};font-size:.8rem">{s["matchs"]} match(s) de phase finale</div></div>'
+            f'<div style="text-align:right">'
+            f'<b style="color:{D1_BLANC};font-size:1.6rem">{s["buts_pour"]}</b>'
+            f'<span style="color:{D1_GRIS}"> – </span>'
+            f'<b style="color:{D1_GRIS};font-size:1.2rem">{s["buts_contre"]}</b>'
+            f'<div style="color:{D1_GRIS};font-size:.75rem">{s["diff"]:+d} diff</div>'
+            f'</div></div></div>',
+            unsafe_allow_html=True
+        )
+
+        # KPI
+        c1, c2, c3, c4 = st.columns(4)
+        c1.markdown(_carte_stat("Buts marqués", s["buts_pour"],
+                    f"{s['buts_pour']/s['matchs']:.1f}/match" if s["matchs"] else "—"),
+                    unsafe_allow_html=True)
+        c2.markdown(_carte_stat("Buts encaissés", s["buts_contre"],
+                    f"{s['buts_contre']/s['matchs']:.1f}/match" if s["matchs"] else "—",
+                    D1_DANGER), unsafe_allow_html=True)
+        nb_buteurs = sans_csc(s["pour_df"])["joueur"].nunique()
+        c3.markdown(_carte_stat("Buteurs", nb_buteurs, "différents", D1_ROUGE),
+                    unsafe_allow_html=True)
+        mins_pour = s["pour_df"]["minute"].dropna()
+        c4.markdown(_carte_stat("Minute moyenne",
+                    f"{mins_pour.mean():.0f}'" if len(mins_pour) else "—",
+                    "de ses buts", D1_OR), unsafe_allow_html=True)
+
+        # Top buteurs PO de l'équipe
+        st.markdown("### Buteurs de l'équipe en phase finale")
+        bb = sans_csc(s["pour_df"])["joueur"].value_counts()
+        if len(bb):
+            noms = [nj(n) for n in bb.index][::-1]
+            vals = bb.values.tolist()[::-1]
+            fig = go.Figure(go.Bar(x=vals, y=noms, orientation="h",
+                marker_color=coul, text=vals, textposition="outside", textangle=0,
+                textfont=dict(size=13, color=D1_BLANC), cliponaxis=False))
+            fig.update_xaxes(showticklabels=False)
+            st.plotly_chart(style_fig(fig, max(220, 32*len(bb))), use_container_width=True)
+        else:
+            st.info("L'équipe n'a pas encore marqué en phase finale.")
+
+        # Origines
+        st.markdown("### Origines des buts en phase finale")
+        oo = s["pour_df"]["origine"].dropna()
+        if len(oo):
+            rep = oo.value_counts()
+            fig_o = go.Figure(go.Bar(x=rep.values, y=rep.index, orientation="h",
+                marker_color=coul, text=rep.values, textposition="outside", textangle=0,
+                textfont=dict(size=13, color=D1_BLANC), cliponaxis=False))
+            fig_o.update_xaxes(showticklabels=False); fig_o.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_o, max(220, 34*len(rep))), use_container_width=True)
+        else:
+            st.markdown("<p class='note'>Origines pas encore renseignées pour cette équipe en phase finale.</p>",
+                        unsafe_allow_html=True)
+
+        # Comparaison saison régulière
+        st.markdown("### Comparaison avec la saison régulière")
+        reg = df[df["equipe_marque"] == eq]
+        reg_contre = df[df["equipe_encaisse"] == eq]
+        n_match_reg = df[(df["equipe_domicile"]==eq)|(df["equipe_exterieure"]==eq)].groupby(
+            ["journee","equipe_domicile","equipe_exterieure"]).ngroups
+        comp = pd.DataFrame([
+            {"Indicateur": "Buts marqués / match",
+             "Saison régulière": f"{len(reg)/n_match_reg:.2f}" if n_match_reg else "—",
+             "Phase finale": f"{s['buts_pour']/s['matchs']:.2f}" if s["matchs"] else "—"},
+            {"Indicateur": "Buts encaissés / match",
+             "Saison régulière": f"{len(reg_contre)/n_match_reg:.2f}" if n_match_reg else "—",
+             "Phase finale": f"{s['buts_contre']/s['matchs']:.2f}" if s["matchs"] else "—"},
+            {"Indicateur": "Total buts marqués",
+             "Saison régulière": len(reg),
+             "Phase finale": s["buts_pour"]},
+            {"Indicateur": "Total buts encaissés",
+             "Saison régulière": len(reg_contre),
+             "Phase finale": s["buts_contre"]},
+        ])
+        st.dataframe(comp, use_container_width=True, hide_index=True)
+
+
 elif page == "Buteurs PO":
     st.title("Buteurs en phase finale")
 
@@ -2900,8 +3052,37 @@ elif page == "Buteurs PO":
                   .sort_values("buts", ascending=False)
                   .reset_index())
 
-        st.markdown("### Classement")
-        for i, row in clt_po.head(15).iterrows():
+        # KPI
+        c1, c2, c3 = st.columns(3)
+        c1.markdown(_carte_stat("Buts PO", len(d_po), "(hors CSC)"), unsafe_allow_html=True)
+        c2.markdown(_carte_stat("Buteurs différents", d_po["joueur"].nunique(),
+                    "joueurs", D1_VERT), unsafe_allow_html=True)
+        mins_po = d_po["minute"].dropna()
+        c3.markdown(_carte_stat("Minute moyenne",
+                    f"{mins_po.mean():.0f}'" if len(mins_po) else "—",
+                    "des buts PO", D1_OR), unsafe_allow_html=True)
+
+        # Top buteurs graphique
+        st.markdown("### Top buteurs PO")
+        top = clt_po.head(12)
+        noms = [nj(n) for n in top["joueur"]][::-1]
+        vals = top["buts"].tolist()[::-1]
+        couls = [COULEUR_EQUIPE.get(e, D1_ROUGE) for e in top["equipe"]][::-1]
+        fig = go.Figure(go.Bar(x=vals, y=noms, orientation="h",
+            marker_color=couls, text=vals, textposition="outside", textangle=0,
+            textfont=dict(size=13, color=D1_BLANC), cliponaxis=False))
+        fig.update_xaxes(showticklabels=False)
+        st.plotly_chart(style_fig(fig, max(240, 32*len(top))), use_container_width=True)
+
+        # Répartition par équipe
+        st.markdown("### Répartition des buts par équipe")
+        parq = d_po["equipe_marque"].value_counts()
+        st.plotly_chart(barh_equipes(parq.index.tolist(), parq.values.tolist(),
+                        h=max(180, 38*len(parq))), use_container_width=True)
+
+        # Classement détaillé
+        st.markdown("### Classement détaillé")
+        for i, row in clt_po.head(20).iterrows():
             coul = COULEUR_EQUIPE.get(row["equipe"], D1_ROUGE)
             st.markdown(
                 f'<div style="display:flex;align-items:center;gap:.7rem;'
@@ -2915,15 +3096,74 @@ elif page == "Buteurs PO":
                 f'</div>',
                 unsafe_allow_html=True)
 
-        # Comparaison saison régulière / PO pour ces buteurs
+        # Comparaison saison régulière / PO
         st.markdown("### Saison régulière vs Phase finale")
         cmp = []
         for j in clt_po["joueur"]:
             reg = int((df["joueur"] == j).sum())
             po = int((d_po["joueur"] == j).sum())
-            cmp.append({"Buteur": j, "Saison régulière": reg, "Phase finale": po})
-        cmp_df = pd.DataFrame(cmp)
+            cmp.append({"Buteur": j, "Saison régulière": reg, "Phase finale": po,
+                        "Total": reg + po})
+        cmp_df = pd.DataFrame(cmp).sort_values("Phase finale", ascending=False)
         st.dataframe(cmp_df, use_container_width=True, hide_index=True)
+
+
+elif page == "Origines PO":
+    st.title("Origines des buts — Phase finale")
+    if df_po.empty:
+        st.info("Aucun but de phase finale enregistré.")
+    else:
+        ren = df_po["origine"].notna().sum()
+        total = len(df_po)
+        st.markdown(f"<p class='note'>{ren}/{total} buts avec origine renseignée "
+                    f"({ren/total*100:.0f}%).</p>", unsafe_allow_html=True)
+
+        if ren == 0:
+            st.info("Aucune origine encore renseignée pour la phase finale.")
+        else:
+            # Répartition globale
+            st.markdown("### Répartition globale en phase finale")
+            rep_po = df_po["origine"].dropna().value_counts()
+            fig = go.Figure(go.Bar(x=rep_po.values, y=rep_po.index, orientation="h",
+                marker_color=D1_ROUGE,
+                text=[f"{v} ({v/ren*100:.0f}%)" for v in rep_po.values],
+                textposition="outside", textangle=0,
+                textfont=dict(size=13, color=D1_BLANC), cliponaxis=False))
+            fig.update_xaxes(showticklabels=False); fig.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig, max(280, 36*len(rep_po))), use_container_width=True)
+
+            # Comparaison avec saison régulière
+            st.markdown("### Comparaison avec la saison régulière")
+            rep_reg = df["origine"].dropna().value_counts()
+            ren_reg = rep_reg.sum()
+            all_o = sorted(set(rep_po.index) | set(rep_reg.index))
+            cmp = pd.DataFrame([
+                {"Origine": o,
+                 "Saison régulière": int(rep_reg.get(o, 0)),
+                 "Saison %": f"{rep_reg.get(o,0)/ren_reg*100:.1f}%" if ren_reg else "—",
+                 "Phase finale": int(rep_po.get(o, 0)),
+                 "PO %": f"{rep_po.get(o,0)/ren*100:.1f}%" if ren else "—"}
+                for o in all_o
+            ]).sort_values("Phase finale", ascending=False)
+            st.dataframe(cmp, use_container_width=True, hide_index=True)
+
+            # Origines par équipe (en PO)
+            st.markdown("### Origines par équipe (phase finale)")
+            with_orig = df_po[df_po["origine"].notna()]
+            eqs_po = sorted(with_orig["equipe_marque"].unique())
+            for eq in eqs_po:
+                sub = with_orig[with_orig["equipe_marque"] == eq]
+                rep_eq = sub["origine"].value_counts()
+                coul = COULEUR_EQUIPE.get(eq, D1_ROUGE)
+                with st.expander(f"{nc(eq)} — {len(sub)} buts avec origine"):
+                    fig_eq = go.Figure(go.Bar(x=rep_eq.values, y=rep_eq.index,
+                        orientation="h", marker_color=coul,
+                        text=rep_eq.values, textposition="outside", textangle=0,
+                        textfont=dict(size=12, color=D1_BLANC), cliponaxis=False))
+                    fig_eq.update_xaxes(showticklabels=False)
+                    fig_eq.update_yaxes(autorange="reversed")
+                    st.plotly_chart(style_fig(fig_eq, max(180, 34*len(rep_eq))),
+                                    use_container_width=True)
 
 
 elif page == "Méthodo & Couverture":
