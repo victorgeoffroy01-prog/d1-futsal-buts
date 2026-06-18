@@ -130,6 +130,50 @@ div[data-baseweb="select"] *{{color:{D1_BLANC}!important}}
     background:{D1_BORDEAUX}!important;
     border-color:{D1_ROUGE}!important;
     border-bottom:2px solid {D1_BORDEAUX}!important}}
+
+/* ============ RESPONSIVE : tablette & téléphone ============ */
+/* Tablette paysage et fenêtres réduites */
+@media (max-width: 1024px) {{
+    .block-container{{padding-left:1rem!important;padding-right:1rem!important;
+        padding-top:.9rem!important}}
+}}
+/* Tablette portrait */
+@media (max-width: 768px) {{
+    h1{{font-size:1.3rem!important;margin-bottom:1rem!important}}
+    h2{{font-size:1.05rem!important}}
+    h3{{font-size:.92rem!important}}
+    /* Les rangées de st.columns passent en flex-wrap : si une colonne ne
+       tient pas, elle redescend à la ligne au lieu d'être écrasée */
+    div[data-testid="stHorizontalBlock"]{{flex-wrap:wrap!important;gap:.4rem!important}}
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"]{{
+        min-width:48%!important;flex:1 1 48%!important;
+        margin-bottom:.25rem}}
+    [data-testid="stMetricValue"]{{font-size:1.2rem!important}}
+    [data-testid="stMetric"]{{padding:.55rem .7rem!important}}
+    [data-testid="stSidebar"]{{min-width:240px!important;max-width:80%!important}}
+    .stTabs [data-baseweb="tab"]{{
+        font-size:.82rem!important;padding:.4rem .7rem!important}}
+}}
+/* Téléphone : tout en pleine largeur */
+@media (max-width: 480px) {{
+    .block-container{{padding-top:.5rem!important;padding-left:.7rem!important;
+        padding-right:.7rem!important}}
+    h1{{font-size:1.15rem!important;margin-bottom:.8rem!important;
+        padding-bottom:.2rem!important}}
+    h2,h3{{font-size:.88rem!important;margin-top:.7rem!important}}
+    /* Toutes les colonnes empilées une par ligne */
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"]{{
+        min-width:100%!important;flex:1 1 100%!important}}
+    [data-testid="stMetricValue"]{{font-size:1.1rem!important}}
+    [data-testid="stMetricLabel"]{{font-size:.65rem!important}}
+    [data-testid="stMetric"]{{padding:.45rem .6rem!important}}
+    .stTabs [data-baseweb="tab"]{{
+        font-size:.75rem!important;padding:.35rem .55rem!important}}
+    /* Tableaux dataframe : un peu plus compacts */
+    [data-testid="stDataFrame"]{{font-size:.82rem!important}}
+    /* Selectbox plus petits */
+    .stSelectbox>div>div,.stMultiSelect>div>div{{font-size:.85rem!important}}
+}}
 </style>
 """
 
