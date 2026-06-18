@@ -196,6 +196,19 @@ _CSS_CLT = f"""
 .w-buts{{width:66px;text-align:center;font-size:.78rem;flex-shrink:0}}
 .w-diff{{width:38px;text-align:center;font-size:.78rem;font-weight:600;flex-shrink:0}}
 .w-forme{{width:110px;text-align:right;flex-shrink:0}}
+
+/* ===== Classement responsive : tout reste visible, scroll horizontal ===== */
+.clt-wrap{{overflow-x:auto;-webkit-overflow-scrolling:touch}}
+.clt-head,.clt-row{{min-width:560px}}
+@media (max-width: 768px) {{
+    .clt-head,.clt-row{{padding:.35rem .55rem;gap:6px}}
+    .w-rang{{font-size:.78rem}}
+    .w-nom{{font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+    .w-pts{{font-size:.95rem}}
+    .w-vnpd{{font-size:.7rem}}
+    .w-buts{{font-size:.74rem}}
+    .w-diff{{font-size:.74rem}}
+}}
 .fr{{display:inline-block;width:17px;height:17px;border-radius:50%;
     font-size:.62rem;font-weight:700;text-align:center;line-height:17px;margin:1px}}
 .fr-V{{background:{D1_VERT};color:white}}
@@ -1019,7 +1032,7 @@ def pdf_rapport_complet(eq):
         is_dom=(m["dom"]==eq); adv=m["ext"] if is_dom else m["dom"]
         sc=f'{m["score_dom"]}–{m["score_ext"]}' if is_dom else f'{m["score_ext"]}–{m["score_dom"]}'
         r=m["res_dom"] if is_dom else m["res_ext"]; loc="Dom" if is_dom else "Ext"
-        rc="#27AE60" if r=="V" else("#C9A24B" if r=="N" else "#0096C7")
+        rc="#27AE60" if r=="V" else("#C9A24B" if r=="N" else D1_DANGER)
         fd.append([f'J{int(m["journee"])} ({loc})',nc(adv),sc,
                    Paragraph(f'<font color="{rc}"><b>{r}</b></font>',corps)])
     tf=Table(fd,colWidths=[2.5*cm,8.5*cm,2.5*cm,3*cm],repeatRows=1)
@@ -1074,7 +1087,7 @@ def pdf_rapport_complet(eq):
         d_c=Drawing(3.5*cm,10); d_c.add(Rect(0,1,3.5*cm,8,fillColor=colors.HexColor("#1A2540"),strokeColor=None))
         if vc>0: d_c.add(Rect(0,1,vc/mx_tr*3.5*cm,8,fillColor=colors.HexColor(D1_DANGER),strokeColor=None))
         tr_rows.append([str(tr),Paragraph(f'<font color="{coul_hex}"><b>{vp}</b></font>',corps),d_p,
-                        Paragraph(f'<font color="#0096C7"><b>{vc}</b></font>',corps),d_c])
+                        Paragraph(f'<font color="{D1_DANGER}"><b>{vc}</b></font>',corps),d_c])
     tt=Table(tr_rows,colWidths=[1.8*cm,1.2*cm,6*cm,1.2*cm,4.5*cm],repeatRows=1)
     tt.setStyle(TableStyle(tbl_base()+hdr_row()+zebra()))
     elems+=[tt,Spacer(1,6)]
@@ -1372,12 +1385,13 @@ if page == "Accueil":
         textposition="outside", textangle=0,
         textfont=dict(size=14, color=D1_BLANC),
     ))
-    fig_de.update_layout(barmode="group", bargap=0.2, bargroupgap=0.08)
+    fig_de.update_layout(barmode="group", bargap=0.2, bargroupgap=0.08, width=780)
     fig_de.update_yaxes(showticklabels=False, range=[0,120],
                         title=dict(text="% de victoires", font=dict(size=12, color=D1_GRIS)))
     st.plotly_chart(style_fig(fig_de, 340, "% de victoires — Domicile vs Extérieur par équipe"),
-                    use_container_width=True)
-    st.markdown("<p class='note'>Barre pleine = domicile · Barre semi-transparente = extérieur</p>",
+                    use_container_width=False)
+    st.markdown("<p class='note'>Barre pleine = domicile · Barre semi-transparente = extérieur · "
+                "Glisse horizontalement sur mobile pour tout voir.</p>",
                 unsafe_allow_html=True)
 
     st.markdown("### Heatmap — buts par équipe et par journée")
@@ -1400,7 +1414,8 @@ if page == "Accueil":
     ))
     fig_hm.update_xaxes(tickfont=dict(size=11))
     fig_hm.update_yaxes(tickfont=dict(size=11))
-    st.plotly_chart(style_fig(fig_hm, max(360, 32*len(ordre))), use_container_width=True)
+    fig_hm.update_layout(width=max(780, 38*len(pivot_hm.columns)+220))
+    st.plotly_chart(style_fig(fig_hm, max(360, 32*len(ordre))), use_container_width=False)
     st.markdown("<p class='note'>Couleur = nombre de buts marqués ce match-là. "
                 "Plus rouge = plus de buts.</p>", unsafe_allow_html=True)
 
@@ -2233,7 +2248,8 @@ elif page == "Analyse avancée":
     fig_hm2.update_xaxes(tickfont=dict(size=10),
         tickvals=[f"{m}'" for m in [1,5,10,15,20,25,30,35,40]])
     fig_hm2.update_yaxes(tickfont=dict(size=11))
-    st.plotly_chart(style_fig(fig_hm2,max(300,38*len(ordre_hm))),use_container_width=True)
+    fig_hm2.update_layout(width=780)
+    st.plotly_chart(style_fig(fig_hm2,max(300,38*len(ordre_hm))),use_container_width=False)
 
 
 elif page == "Power play":
