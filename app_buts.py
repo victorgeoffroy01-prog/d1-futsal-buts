@@ -640,7 +640,29 @@ if st.session_state.get("_last_page") != page:
     st.session_state._last_page = page
     import streamlit.components.v1 as _components
     _components.html(
-        "<script>window.parent.scrollTo({top:0, behavior:'instant'});</script>",
+        """
+        <script>
+        const scrollTop = () => {
+            try {
+                const w = window.parent;
+                w.scrollTo({top:0, left:0, behavior:'instant'});
+                w.document.documentElement.scrollTop = 0;
+                w.document.body.scrollTop = 0;
+                // Streamlit a un container interne scrollable
+                const sels = ['section.main', '[data-testid="stAppViewContainer"]',
+                              '[data-testid="stMain"]', '.main', '.stApp'];
+                sels.forEach(s => {
+                    const el = w.document.querySelector(s);
+                    if (el) el.scrollTop = 0;
+                });
+            } catch(e) {}
+        };
+        scrollTop();
+        setTimeout(scrollTop, 50);
+        setTimeout(scrollTop, 150);
+        setTimeout(scrollTop, 400);
+        </script>
+        """,
         height=0
     )
 
