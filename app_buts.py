@@ -635,6 +635,15 @@ with st.sidebar:
 
 page = st.session_state.page
 
+# Quand l'utilisateur change de page, on remonte automatiquement en haut.
+if st.session_state.get("_last_page") != page:
+    st.session_state._last_page = page
+    import streamlit.components.v1 as _components
+    _components.html(
+        "<script>window.parent.scrollTo({top:0, behavior:'instant'});</script>",
+        height=0
+    )
+
 # Mémoire de l'équipe sélectionnée entre pages
 if "equipe_sel" not in st.session_state:
     st.session_state.equipe_sel = EQUIPES[0]
