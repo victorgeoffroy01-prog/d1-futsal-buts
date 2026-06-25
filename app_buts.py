@@ -221,6 +221,8 @@ _CSS_CLT = f"""
 """
 
 st.markdown(_CSS_BASE, unsafe_allow_html=True)
+# Ancre invisible utilisée par le scroll-to-top au changement de page
+st.markdown('<span id="page-top-anchor"></span>', unsafe_allow_html=True)
 st.markdown(_CSS_CLT,  unsafe_allow_html=True)
 
 # ============================================================================
@@ -642,25 +644,44 @@ if st.session_state.get("_last_page") != page:
     _components.html(
         """
         <script>
-        const scrollTop = () => {
-            try {
-                const w = window.parent;
-                w.scrollTo({top:0, left:0, behavior:'instant'});
-                w.document.documentElement.scrollTop = 0;
-                w.document.body.scrollTop = 0;
-                // Streamlit a un container interne scrollable
-                const sels = ['section.main', '[data-testid="stAppViewContainer"]',
-                              '[data-testid="stMain"]', '.main', '.stApp'];
-                sels.forEach(s => {
-                    const el = w.document.querySelector(s);
-                    if (el) el.scrollTop = 0;
-                });
-            } catch(e) {}
+        const tryScroll = () => {
+            // Tente d'accéder au document parent de toutes les façons possibles
+            const candidates = [];
+            try { candidates.push(window.parent); } catch(e) {}
+            try { candidates.push(window.top); } catch(e) {}
+            try { candidates.push(window.parent.parent); } catch(e) {}
+            for (const w of candidates) {
+                if (!w) continue;
+                try {
+                    // Scrolls par tous les moyens
+                    w.scrollTo({top:0, left:0, behavior:'auto'});
+                    if (w.document && w.document.documentElement) {
+                        w.document.documentElement.scrollTop = 0;
+                    }
+                    if (w.document && w.document.body) {
+                        w.document.body.scrollTop = 0;
+                    }
+                    // Ancre invisible insérée tout en haut du contenu Streamlit
+                    if (w.document) {
+                        const anchor = w.document.getElementById('page-top-anchor');
+                        if (anchor) {
+                            anchor.scrollIntoView({behavior:'auto', block:'start'});
+                        }
+                        // Tous les conteneurs scrollables de Streamlit
+                        ['section.main','[data-testid="stMain"]',
+                         '[data-testid="stAppViewContainer"]','.stApp','.main',
+                         '[data-testid="stMainBlockContainer"]'].forEach(sel => {
+                            w.document.querySelectorAll(sel).forEach(el => {
+                                el.scrollTop = 0;
+                            });
+                        });
+                    }
+                } catch(e) {}
+            }
         };
-        scrollTop();
-        setTimeout(scrollTop, 50);
-        setTimeout(scrollTop, 150);
-        setTimeout(scrollTop, 400);
+        // Plusieurs tentatives car Streamlit redessine après coup
+        tryScroll();
+        [50, 150, 350, 700, 1200].forEach(d => setTimeout(tryScroll, d));
         </script>
         """,
         height=0
