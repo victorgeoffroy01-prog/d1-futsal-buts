@@ -345,7 +345,11 @@ if df_full is None:
 # est saisie sous forme texte : PO1 (demi aller), PO2 (demi retour), POF (finale).
 # Tout le code existant continue à travailler sur df = saison régulière, comme
 # avant. La phase finale a ses pages dédiées (univers PHASE FINALE).
-_phase_po = df_full["journee"].astype(str).str.upper().str.startswith("PO")
+# Une journée est en phase finale si son code commence par "PO" (PO1/PO2/POF)
+# ou vaut "FINALE" — alias accepté pour la finale.
+_phase_po = df_full["journee"].astype(str).str.upper().apply(
+    lambda s: s.startswith("PO") or s == "FINALE"
+)
 df_po = df_full[_phase_po].copy()
 df    = df_full[~_phase_po].copy()
 # Garde les journées numériques triées comme entiers
@@ -496,9 +500,11 @@ def reconstruire_score(df_match, dom, ext):
 # HELPERS — PHASE FINALE
 # ============================================================================
 def _matchs_phase(phase):
-    """Liste des matchs d'une phase finale (PO1/PO2/POF) sous forme
-    [(dom, ext, score_dom, score_ext, df_match), ...]"""
-    sub = df_po[df_po["journee"].astype(str).str.upper() == phase]
+    """Liste des matchs d'une phase finale sous forme
+    [(dom, ext, score_dom, score_ext, df_match), ...]
+    Alias acceptés : "POF" et "FINALE" désignent tous deux la finale."""
+    alias = {"POF": {"POF", "FINALE"}}.get(phase, {phase})
+    sub = df_po[df_po["journee"].astype(str).str.upper().isin(alias)]
     res = []
     for (dom, ext), g in sub.groupby(["equipe_domicile", "equipe_exterieure"]):
         sd = int((g["equipe_marque"] == dom).sum())
