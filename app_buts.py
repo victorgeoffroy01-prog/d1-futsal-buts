@@ -1890,9 +1890,11 @@ elif page == "Buteurs":
     with cd2:
         st.markdown("### Comparateur multi-buteurs")
         top_list = clt["joueur"].head(20).tolist()
+        options_cmp = [x for x in top_list if x != j]
+        default_cmp = [x for x in options_cmp[:3] if x != j]
         comp_sel = st.multiselect("Comparer avec",
-                                  [x for x in top_list if x != j],
-                                  default=top_list[1:3] if len(top_list)>2 else [],
+                                  options_cmp,
+                                  default=default_cmp,
                                   max_selections=3)
         fig_comp = go.Figure()
         for bu in [j]+comp_sel:
